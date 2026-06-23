@@ -86,11 +86,32 @@
 | # | 測試項目 | 結果 |
 |---|---------|------|
 | 1 | 資料庫初始化（SQLite 18張表） | ✅ PASS |
-| 2 | 訊號生成管線（美股真實資料）| ✅ PASS |
-| 3 | S3 組合策略整合（S1+S2→決策） | ✅ PASS |
-| 4 | FastAPI 服務器健康端點 | ✅ PASS |
-| 5 | 回測引擎（0050, 2015-2024） | ✅ PASS — 年化+8%, Sharpe 1.18 |
-| 6 | Paper Trading 完整下單流程 | ✅ PASS |
+| 2 | 美股資料抓取（Yahoo Finance） | ✅ PASS |
+| 3 | S2 時間差訊號生成（真實資料） | ✅ PASS |
+| 4 | S1 MA200 趨勢濾網（真實資料） | ✅ PASS |
+| 5 | S3 組合訊號決策（S1+S2） | ✅ PASS |
+| 6 | FastAPI /health、/signals/current、/performance、/positions | ✅ PASS |
+| 7 | FastAPI POST /backtest/run HTTP 端點 | ✅ PASS |
+| 8 | FastAPI POST /orders 觀察模式攔截 | ✅ PASS |
+| 9 | 回測引擎（0050, 2015-2024）— 年化+8%, Sharpe 1.18 | ✅ PASS |
+| 10 | Paper Trading 完整下單 + 停損觸發 | ✅ PASS |
+| 11 | 覆盤 Layer 1：規則遵守度 | ✅ PASS |
+| 12 | 覆盤 Layer 2：訊號品質分析 | ✅ PASS |
+| 13 | 市場環境分類器 | ✅ PASS |
+| 14 | 稅後損益計算 | ✅ PASS |
+| 15 | 穩定度評分器 | ✅ PASS |
+| 16 | 優勢衰減偵測（含自動暫停） | ✅ PASS |
+| 17 | 基準比較器（策略 vs 0050） | ✅ PASS |
+| 18 | 過度擬合防護 | ✅ PASS |
+| 19 | 策略版本管理 | ✅ PASS |
+| 20 | 人為干預追蹤 | ✅ PASS |
+| 21 | Celery 任務邏輯（6個任務直接呼叫） | ✅ PASS |
+
+**待憑證驗證（需外部服務）：**
+- Telegram 推播（需 BOT_TOKEN）
+- Layer 3 AI 覆盤（需 ANTHROPIC_API_KEY）
+- Celery + Redis broker（需 REDIS_URL）
+- Supabase PostgreSQL（需 DATABASE_URL）
 
 ---
 
