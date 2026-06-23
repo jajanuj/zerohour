@@ -1,0 +1,35 @@
+app = "zerohour-trading-engine"
+primary_region = "nrt"
+
+[build]
+  dockerfile = "docker/Dockerfile"
+
+[[services]]
+  internal_port = 8080
+  protocol = "tcp"
+
+  [[services.ports]]
+    port = 80
+    handlers = ["http"]
+
+  [[services.ports]]
+    port = 443
+    handlers = ["tls", "http"]
+
+  [services.concurrency]
+    hard_limit = 25
+    soft_limit = 20
+
+[processes]
+  web       = "uvicorn src.main:app --host 0.0.0.0 --port 8080"
+  worker    = "celery -A src.tasks worker --loglevel=info -Q signals,orders,alerts -c 2"
+  scheduler = "celery -A src.tasks beat   --loglevel=info"
+
+[env]
+  TRADING_MODE = "paper"
+  TZ = "Asia/Taipei"
+
+[[vm]]
+  cpu_kind  = "shared"
+  cpus      = 1
+  memory_mb = 256
