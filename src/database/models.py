@@ -123,7 +123,7 @@ class PerformanceSnapshot(Base):
     max_drawdown_pct = Column(Numeric(8, 4))
     win_rate = Column(Numeric(5, 4))
     sharpe_ratio = Column(Numeric(8, 4))
-    metadata = Column(JSON)
+    extra_data = Column(JSON)
     created_at = Column(DateTime, default=datetime.utcnow)
 
 
