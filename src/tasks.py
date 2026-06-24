@@ -8,10 +8,21 @@ from .config import get_settings
 logger = logging.getLogger(__name__)
 settings = get_settings()
 
+
+def _make_redis_url(url: str) -> str:
+    """Upstash rediss:// needs ssl_cert_reqs in URL for Celery validation."""
+    if url.startswith("rediss://") and "ssl_cert_reqs" not in url:
+        sep = "&" if "?" in url else "?"
+        return f"{url}{sep}ssl_cert_reqs=CERT_NONE"
+    return url
+
+
+_redis_url = _make_redis_url(settings.redis_url)
+
 celery_app = Celery(
     "zerohour",
-    broker=settings.redis_url,
-    backend=settings.redis_url,
+    broker=_redis_url,
+    backend=_redis_url,
 )
 
 celery_app.conf.update(
@@ -23,11 +34,10 @@ celery_app.conf.update(
     task_track_started=True,
 )
 
-# Upstash Redis uses rediss:// (TLS); Celery needs explicit ssl_cert_reqs
+# ssl_cert_reqs is in URL; also set broker_use_ssl for kombu transport
 if settings.redis_url.startswith("rediss://"):
-    _ssl_opts = {"ssl_cert_reqs": ssl.CERT_NONE}
-    celery_app.conf.broker_use_ssl = _ssl_opts
-    celery_app.conf.redis_backend_use_ssl = _ssl_opts
+    celery_app.conf.broker_use_ssl = {"ssl_cert_reqs": ssl.CERT_NONE}
+    celery_app.conf.redis_backend_use_ssl = {"ssl_cert_reqs": ssl.CERT_NONE}
 
 celery_app.conf.beat_schedule = {
     # 04:00 美股收盤資料抓取
