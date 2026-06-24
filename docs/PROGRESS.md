@@ -107,11 +107,13 @@
 | 20 | 人為干預追蹤 | ✅ PASS |
 | 21 | Celery 任務邏輯（6個任務直接呼叫） | ✅ PASS |
 
-**待憑證驗證（需外部服務）：**
-- Telegram 推播（需 BOT_TOKEN）
-- Layer 3 AI 覆盤（需 ANTHROPIC_API_KEY）
-- Celery + Redis broker（需 REDIS_URL）
-- Supabase PostgreSQL（需 DATABASE_URL）
+**憑證驗證全部完成：**
+| 項目 | 狀態 |
+|------|------|
+| Supabase PostgreSQL | ✅ 連線成功，18 張資料表建立完成 |
+| Gemini API（Layer 3 AI 覆盤） | ✅ gemini-2.5-flash 回應正常 |
+| Upstash Redis（Celery broker） | ✅ Ping 成功，Read/Write 驗證通過 |
+| Telegram 推播 | ⏳ 待設定 BOT_TOKEN |
 
 ---
 
