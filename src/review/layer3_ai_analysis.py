@@ -27,13 +27,15 @@ async def run_ai_review(
     rolling_stats: dict,
     market_context: Optional[dict] = None,
 ) -> str:
-    """呼叫 Claude API 進行 AI 覆盤分析。"""
-    if not settings.anthropic_api_key:
-        return "（AI 覆盤未啟用：未設定 ANTHROPIC_API_KEY）"
+    """呼叫 Gemini API 進行 AI 覆盤分析。"""
+    if not settings.gemini_api_key:
+        return "（AI 覆盤未啟用：未設定 GEMINI_API_KEY）"
 
     market_ctx = market_context.get("summary", "無額外市場背景") if market_context else "無額外市場背景"
 
     prompt = f"""
+{AI_REVIEW_SYSTEM_PROMPT}
+
 請分析以下今日（{date.today()}）交易覆盤數據：
 
 【Layer 1 規則遵守度】
@@ -68,22 +70,16 @@ vs 基準（0050 買入持有）：{rolling_stats.get('vs_benchmark_pct', 0):+.2
     try:
         async with httpx.AsyncClient(timeout=30.0) as client:
             resp = await client.post(
-                "https://api.anthropic.com/v1/messages",
-                headers={
-                    "Content-Type": "application/json",
-                    "x-api-key": settings.anthropic_api_key,
-                    "anthropic-version": "2023-06-01",
-                },
+                f"https://generativelanguage.googleapis.com/v1beta/models/gemini-2.0-flash:generateContent?key={settings.gemini_api_key}",
+                headers={"Content-Type": "application/json"},
                 json={
-                    "model": "claude-sonnet-4-6",
-                    "max_tokens": 1000,
-                    "system": AI_REVIEW_SYSTEM_PROMPT,
-                    "messages": [{"role": "user", "content": prompt}],
+                    "contents": [{"parts": [{"text": prompt}]}],
+                    "generationConfig": {"maxOutputTokens": 1500},
                 },
             )
             resp.raise_for_status()
             data = resp.json()
-            return data["content"][0]["text"]
+            return data["candidates"][0]["content"]["parts"][0]["text"]
     except Exception as e:
         logger.error(f"AI 覆盤呼叫失敗: {e}")
         return f"AI 覆盤執行失敗：{e}"

@@ -27,8 +27,8 @@ class Settings(BaseSettings):
     telegram_bot_token: str = Field(default="")
     telegram_chat_id: str = Field(default="")
 
-    # Claude API
-    anthropic_api_key: str = Field(default="")
+    # Gemini API
+    gemini_api_key: str = Field(default="")
 
     # Trading parameters
     trading_mode: str = Field(default="paper")  # paper | live | observe
