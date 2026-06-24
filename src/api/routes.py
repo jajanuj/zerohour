@@ -28,9 +28,76 @@ async def health_check():
 
 @router.get("/signals/current", response_model=CurrentSignalsResponse)
 async def get_current_signals():
-    """取得目前最新訊號狀態（讀取 DB 最新記錄）。"""
-    # TODO: 從 DB 讀取最新訊號（Phase D 完成基本骨架，DB 整合在部署後填入）
-    return CurrentSignalsResponse()
+    """即時抓取市場資料並生成 S1/S2/S3 訊號。"""
+    import asyncio
+    from datetime import datetime
+    from ..data.fetcher import USMarketFetcher, TWMarketFetcher
+    from ..data.normalizer import DataNormalizer
+    from ..signals.time_diff import TimeDiffSignalGenerator
+    from ..signals.ma200_filter import MA200Filter
+    from ..signals.aggregator import SignalAggregator
+
+    try:
+        loop = asyncio.get_event_loop()
+
+        fetcher = USMarketFetcher()
+        norm = DataNormalizer()
+
+        # S2：時間差訊號（用美股最新收盤漲跌）
+        us_data = await loop.run_in_executor(None, fetcher.get_all_signals_data)
+        nasdaq_chg = us_data.get("nasdaq", {}).get("change_pct", 0.0) or 0.0
+        sp500_chg  = us_data.get("sp500",  {}).get("change_pct", 0.0) or 0.0
+        sox_chg    = us_data.get("sox",    {}).get("change_pct", 0.0) or 0.0
+
+        gen = TimeDiffSignalGenerator(
+            nasdaq_threshold=settings.us_signal_threshold,
+            min_confidence=settings.min_confidence,
+        )
+        time_diff = gen.generate(nasdaq_chg, sp500_chg, sox_chg)
+
+        # S1：MA200 趨勢（QQQ 2年資料）
+        qqq_raw = await loop.run_in_executor(
+            None, lambda: fetcher.get_historical("qqq", period="2y")
+        )
+        qqq_df = norm.normalize_ohlcv(qqq_raw)
+        ma_filter = MA200Filter(period=settings.ma_period)
+        trend = ma_filter.calculate(qqq_df, "QQQ")
+
+        # S3：組合決策
+        agg = SignalAggregator()
+        combined = agg.aggregate(trend, time_diff)
+
+        return CurrentSignalsResponse(
+            trend=TrendSignalSchema(
+                symbol=trend.symbol,
+                state=trend.state.value,
+                current_price=float(trend.current_price),
+                ma200=float(trend.ma200),
+                distance_pct=float(trend.distance_pct),
+                signal_date=datetime.combine(trend.date, datetime.min.time()),
+                is_newly_crossed=trend.is_newly_crossed,
+            ),
+            time_diff=TimeDiffSignalSchema(
+                direction=time_diff.direction.value,
+                confidence=float(time_diff.confidence),
+                nasdaq_change_pct=nasdaq_chg,
+                sp500_change_pct=sp500_chg,
+                sox_change_pct=sox_chg,
+                trigger_reason=time_diff.trigger_reason,
+                generated_at=time_diff.generated_at,
+            ),
+            combined=CombinedSignalSchema(
+                final_action=combined.final_action.value,
+                symbol=combined.symbol or "0050",
+                suggested_position_pct=float(combined.suggested_position_pct),
+                stop_loss_pct=float(combined.stop_loss_pct),
+                reason=combined.reason,
+            ),
+        )
+
+    except Exception as e:
+        logger.error(f"get_current_signals error: {e}")
+        raise HTTPException(status_code=500, detail=str(e))
 
 
 @router.get("/positions", response_model=list[PositionSchema])
