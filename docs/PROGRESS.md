@@ -117,11 +117,29 @@
 
 ---
 
-## ⏳ 待處理（老闆確認後進行）
+## ✅ Fly.io 部署完成（2026-06-24）
 
-- 提供外部服務憑證（Supabase URL、Telegram Bot、Anthropic API Key）
-- Fly.io 首次部署
-- Supabase 資料表建立（alembic upgrade head）
+| 進程 | 狀態 | 說明 |
+|------|------|------|
+| web (×2) | ✅ started | Uvicorn 0.0.0.0:8080 正常 |
+| worker | ✅ started | celery@d89506... ready |
+| scheduler | ✅ started | beat: Starting... |
+
+**部署網址：** https://zerohour-trading-engine.fly.dev/
+
+### 修復的問題
+| 問題 | 修法 |
+|------|------|
+| setuptools.backends.legacy 不存在 | pyproject.toml 改用 setuptools.build_meta |
+| fly.toml services 缺 processes | 加 `processes = ["web"]` |
+| Celery rediss:// SSL 驗證失敗 | REDIS_URL 附加 `?ssl_cert_reqs=CERT_NONE` |
+
+---
+
+## ⏳ 待處理
+
+- Telegram Bot 設定（TELEGRAM_BOT_TOKEN + TELEGRAM_CHAT_ID）
+- GitHub Secrets 設定（FLY_API_TOKEN、SUPABASE_URL、SUPABASE_ANON_KEY）— 用於 CI/CD
 
 ---
 
