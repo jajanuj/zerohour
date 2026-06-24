@@ -1,3 +1,4 @@
+import ssl
 from celery import Celery
 from celery.schedules import crontab
 import logging
@@ -21,6 +22,12 @@ celery_app.conf.update(
     enable_utc=True,
     task_track_started=True,
 )
+
+# Upstash Redis uses rediss:// (TLS); Celery needs explicit ssl_cert_reqs
+if settings.redis_url.startswith("rediss://"):
+    _ssl_opts = {"ssl_cert_reqs": ssl.CERT_NONE}
+    celery_app.conf.broker_use_ssl = _ssl_opts
+    celery_app.conf.redis_backend_use_ssl = _ssl_opts
 
 celery_app.conf.beat_schedule = {
     # 04:00 美股收盤資料抓取
