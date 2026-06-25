@@ -415,9 +415,14 @@ async function loadSignals() {
     setBar('bar-sox', 'val-sox', td.sox_change_pct);
     setBar('bar-ma200', 'val-ma200', trend.distance_pct, 20);
 
+    const hasSignal = action === 'BUY' || action === 'SELL';
     document.getElementById('entry-symbol').textContent = comb.symbol || '0050';
-    document.getElementById('entry-position').textContent = (comb.suggested_position_pct * 100).toFixed(0) + '% 資金';
-    document.getElementById('entry-stoploss').textContent = fmt(comb.stop_loss_pct * -1) + ' 觸發停損';
+    document.getElementById('entry-position').textContent = hasSignal
+      ? (comb.suggested_position_pct * 100).toFixed(0) + '% 資金'
+      : '— （無進場訊號）';
+    document.getElementById('entry-stoploss').textContent = hasSignal && comb.stop_loss_pct > 0
+      ? fmt(comb.stop_loss_pct * -1) + ' 觸發停損'
+      : '—';
     document.getElementById('entry-reason').textContent = comb.reason || '—';
 
     const announce = document.getElementById('announce-area');
