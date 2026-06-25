@@ -1,0 +1,531 @@
+<!DOCTYPE html>
+<html lang="zh-TW">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>ZeroHour Dashboard</title>
+<link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/@tabler/icons-webfont@3.30.0/dist/tabler-icons.min.css">
+<script src="https://cdnjs.cloudflare.com/ajax/libs/Chart.js/4.4.1/chart.umd.js"></script>
+<style>
+  *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+  :root {
+    --bg: #f8f9fa; --surface: #ffffff; --surface2: #f1f3f5;
+    --border: #dee2e6; --border-light: #e9ecef;
+    --text: #212529; --text-muted: #6c757d; --text-light: #adb5bd;
+    --green: #2f9e44; --green-bg: #ebfbee; --green-text: #2b8a3e;
+    --red: #c92a2a; --red-bg: #fff5f5; --red-text: #c92a2a;
+    --blue: #1971c2; --blue-bg: #e7f5ff; --blue-text: #1864ab;
+    --amber: #e67700; --amber-bg: #fff9db; --amber-text: #b45309;
+    --gray-bg: #f1f3f5; --gray-text: #495057;
+    --radius: 8px; --radius-lg: 12px;
+    --shadow: 0 1px 3px rgba(0,0,0,.08), 0 1px 2px rgba(0,0,0,.04);
+  }
+  @media (prefers-color-scheme: dark) {
+    :root {
+      --bg: #141517; --surface: #1a1b1e; --surface2: #25262b;
+      --border: #373a40; --border-light: #2c2e33;
+      --text: #c1c2c5; --text-muted: #909296; --text-light: #5c5f66;
+      --green: #40c057; --green-bg: #0d2b1a; --green-text: #69db7c;
+      --red: #fa5252; --red-bg: #2b0d0d; --red-text: #ff8787;
+      --blue: #339af0; --blue-bg: #0d2040; --blue-text: #74c0fc;
+      --amber: #fd7e14; --amber-bg: #2b1800; --amber-text: #ffa94d;
+      --gray-bg: #25262b; --gray-text: #909296;
+    }
+  }
+  body { font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif; background: var(--bg); color: var(--text); font-size: 14px; line-height: 1.5; }
+  a { color: var(--blue); text-decoration: none; }
+  a:hover { text-decoration: underline; }
+
+  /* Layout */
+  .navbar { background: var(--surface); border-bottom: 1px solid var(--border); padding: 0 24px; height: 56px; display: flex; align-items: center; justify-content: space-between; position: sticky; top: 0; z-index: 100; }
+  .navbar-brand { font-size: 16px; font-weight: 600; color: var(--text); display: flex; align-items: center; gap: 8px; }
+  .navbar-brand i { font-size: 20px; color: var(--blue); }
+  .navbar-right { display: flex; align-items: center; gap: 16px; }
+  .mode-badge { font-size: 11px; font-weight: 600; padding: 3px 8px; border-radius: 4px; background: var(--amber-bg); color: var(--amber-text); letter-spacing: .04em; text-transform: uppercase; }
+  .last-update { font-size: 12px; color: var(--text-muted); display: flex; align-items: center; gap: 4px; }
+  .btn { display: inline-flex; align-items: center; gap: 6px; padding: 7px 14px; border-radius: var(--radius); border: 1px solid var(--border); background: var(--surface); color: var(--text); font-size: 13px; cursor: pointer; font-family: inherit; transition: background .15s; }
+  .btn:hover { background: var(--surface2); }
+  .btn-primary { background: var(--blue-bg); color: var(--blue-text); border-color: var(--blue); }
+  .btn-primary:hover { background: var(--blue); color: #fff; }
+  .btn i { font-size: 15px; }
+  .btn.loading i { animation: spin .8s linear infinite; }
+  @keyframes spin { to { transform: rotate(360deg); } }
+
+  .main { max-width: 1080px; margin: 0 auto; padding: 24px 16px; }
+  .section-title { font-size: 11px; font-weight: 600; letter-spacing: .08em; text-transform: uppercase; color: var(--text-muted); margin-bottom: 12px; }
+
+  /* Cards */
+  .card { background: var(--surface); border: 1px solid var(--border); border-radius: var(--radius-lg); box-shadow: var(--shadow); }
+  .card-body { padding: 16px 20px; }
+  .card-header { padding: 14px 20px 0; display: flex; align-items: center; justify-content: space-between; }
+  .card-title { font-size: 13px; font-weight: 600; color: var(--text); display: flex; align-items: center; gap: 6px; }
+  .card-title i { font-size: 16px; color: var(--text-muted); }
+
+  /* Grid */
+  .grid3 { display: grid; grid-template-columns: repeat(3, 1fr); gap: 12px; margin-bottom: 20px; }
+  .grid4 { display: grid; grid-template-columns: repeat(4, 1fr); gap: 12px; margin-bottom: 20px; }
+  .grid2 { display: grid; grid-template-columns: repeat(2, 1fr); gap: 12px; margin-bottom: 20px; }
+  @media (max-width: 640px) {
+    .grid3, .grid4 { grid-template-columns: 1fr 1fr; }
+    .grid2 { grid-template-columns: 1fr; }
+  }
+
+  /* Signal cards */
+  .sig-card { padding: 16px 20px; }
+  .sig-label { font-size: 11px; color: var(--text-muted); margin-bottom: 6px; display: flex; align-items: center; gap: 4px; }
+  .sig-label i { font-size: 14px; }
+  .sig-value { font-size: 24px; font-weight: 600; margin-bottom: 4px; }
+  .sig-sub { font-size: 12px; color: var(--text-muted); }
+  .bull { color: var(--green); }
+  .bear { color: var(--red); }
+  .neut { color: var(--text-muted); }
+  .blue { color: var(--blue); }
+
+  /* Metric cards */
+  .metric-card { padding: 14px 16px; }
+  .metric-label { font-size: 11px; color: var(--text-muted); margin-bottom: 6px; }
+  .metric-value { font-size: 20px; font-weight: 600; color: var(--text); }
+  .metric-sub { font-size: 11px; color: var(--text-muted); margin-top: 3px; }
+
+  /* Badge */
+  .badge { display: inline-block; font-size: 11px; font-weight: 600; padding: 3px 8px; border-radius: 4px; }
+  .badge-buy { background: var(--green-bg); color: var(--green-text); }
+  .badge-sell { background: var(--red-bg); color: var(--red-text); }
+  .badge-hold { background: var(--amber-bg); color: var(--amber-text); }
+  .badge-ok { background: var(--green-bg); color: var(--green-text); }
+  .badge-warn { background: var(--amber-bg); color: var(--amber-text); }
+  .badge-gray { background: var(--gray-bg); color: var(--gray-text); }
+
+  /* Signal bars */
+  .sig-detail { padding: 4px 0; }
+  .sig-row { display: flex; align-items: center; gap: 10px; padding: 7px 0; border-bottom: 1px solid var(--border-light); }
+  .sig-row:last-child { border-bottom: none; }
+  .sig-row-name { font-size: 12px; color: var(--text-muted); width: 90px; flex-shrink: 0; }
+  .sig-row-bar { flex: 1; height: 5px; background: var(--surface2); border-radius: 3px; overflow: hidden; }
+  .sig-row-fill { height: 100%; border-radius: 3px; transition: width .5s ease; }
+  .fill-bull { background: var(--green); }
+  .fill-bear { background: var(--red); }
+  .fill-neut { background: var(--text-light); }
+  .sig-row-val { font-size: 13px; font-weight: 500; width: 64px; text-align: right; flex-shrink: 0; }
+
+  /* Positions table */
+  .pos-table { width: 100%; border-collapse: collapse; }
+  .pos-table th { font-size: 11px; font-weight: 600; color: var(--text-muted); text-align: left; padding: 8px 12px; border-bottom: 1px solid var(--border); text-transform: uppercase; letter-spacing: .04em; }
+  .pos-table td { font-size: 13px; padding: 10px 12px; border-bottom: 1px solid var(--border-light); }
+  .pos-table tr:last-child td { border-bottom: none; }
+  .pos-table .right { text-align: right; }
+  .empty-state { text-align: center; padding: 32px; color: var(--text-muted); font-size: 13px; }
+  .empty-state i { font-size: 28px; display: block; margin-bottom: 8px; opacity: .5; }
+
+  /* Status list */
+  .status-row { display: flex; align-items: center; gap: 10px; padding: 9px 0; border-bottom: 1px solid var(--border-light); }
+  .status-row:last-child { border-bottom: none; }
+  .status-dot { width: 8px; height: 8px; border-radius: 50%; flex-shrink: 0; }
+  .dot-green { background: var(--green); }
+  .dot-amber { background: var(--amber); }
+  .dot-red { background: var(--red); }
+  .status-name { font-size: 13px; font-weight: 500; width: 90px; flex-shrink: 0; }
+  .status-desc { font-size: 12px; color: var(--text-muted); flex: 1; }
+
+  /* Divider */
+  .divider { height: 1px; background: var(--border-light); margin: 24px 0; }
+
+  /* Announce */
+  .announce { display: flex; align-items: flex-start; gap: 10px; padding: 12px 16px; border-radius: var(--radius); border: 1px solid; font-size: 13px; margin-bottom: 20px; }
+  .announce-info { background: var(--blue-bg); border-color: var(--blue); color: var(--blue-text); }
+  .announce-warn { background: var(--amber-bg); border-color: var(--amber); color: var(--amber-text); }
+  .announce i { font-size: 16px; flex-shrink: 0; margin-top: 1px; }
+
+  /* Loading skeleton */
+  .skeleton { background: linear-gradient(90deg, var(--surface2) 25%, var(--border-light) 50%, var(--surface2) 75%); background-size: 200% 100%; animation: shimmer 1.5s infinite; border-radius: 4px; }
+  @keyframes shimmer { 0% { background-position: 200% 0; } 100% { background-position: -200% 0; } }
+  .skeleton-text { height: 14px; margin-bottom: 6px; }
+  .skeleton-val { height: 24px; width: 60%; }
+
+  /* Chart */
+  .chart-wrap { position: relative; height: 180px; margin-top: 12px; }
+</style>
+</head>
+<body>
+
+<nav class="navbar">
+  <div class="navbar-brand">
+    <i class="ti ti-chart-candle" aria-hidden="true"></i>
+    ZeroHour
+  </div>
+  <div class="navbar-right">
+    <span class="mode-badge" id="mode-badge">paper</span>
+    <span class="last-update"><i class="ti ti-clock" aria-hidden="true" style="font-size:13px"></i><span id="last-update-time">—</span></span>
+    <button class="btn btn-primary" id="refresh-btn" onclick="refreshAll()">
+      <i class="ti ti-refresh" aria-hidden="true"></i>更新訊號
+    </button>
+    <a href="/docs" class="btn" target="_blank"><i class="ti ti-api" aria-hidden="true"></i>API</a>
+  </div>
+</nav>
+
+<main class="main">
+
+  <div id="announce-area"></div>
+
+  <!-- Signals -->
+  <div class="section-title">今日訊號</div>
+  <div class="grid3" id="signal-cards">
+    <div class="card sig-card">
+      <div class="sig-label"><i class="ti ti-trending-up" aria-hidden="true"></i>S1 MA200 趨勢</div>
+      <div class="sig-value skeleton skeleton-val" id="s1-val" style="min-height:28px"> </div>
+      <div class="sig-sub" id="s1-sub"><span class="skeleton skeleton-text" style="width:80%"> </span></div>
+    </div>
+    <div class="card sig-card">
+      <div class="sig-label"><i class="ti ti-clock-2" aria-hidden="true"></i>S2 時間差訊號</div>
+      <div class="sig-value skeleton skeleton-val" id="s2-val" style="min-height:28px"> </div>
+      <div class="sig-sub" id="s2-sub"><span class="skeleton skeleton-text" style="width:80%"> </span></div>
+    </div>
+    <div class="card sig-card">
+      <div class="sig-label"><i class="ti ti-bolt" aria-hidden="true"></i>S3 組合決策</div>
+      <div class="sig-value skeleton skeleton-val" id="s3-val" style="min-height:28px"> </div>
+      <div class="sig-sub" id="s3-sub"><span class="skeleton skeleton-text" style="width:80%"> </span></div>
+    </div>
+  </div>
+
+  <!-- Signal Detail -->
+  <div class="grid2">
+    <div class="card" style="margin-bottom:20px">
+      <div class="card-header">
+        <span class="card-title"><i class="ti ti-chart-bar" aria-hidden="true"></i>美股指數表現</span>
+        <span id="s3-badge" class="badge badge-gray">—</span>
+      </div>
+      <div class="card-body sig-detail" id="index-detail">
+        <div class="sig-row"><span class="sig-row-name">NASDAQ</span><div class="sig-row-bar"><div class="sig-row-fill fill-neut" style="width:50%" id="bar-nasdaq"></div></div><span class="sig-row-val skeleton skeleton-text" id="val-nasdaq"> </span></div>
+        <div class="sig-row"><span class="sig-row-name">S&P 500</span><div class="sig-row-bar"><div class="sig-row-fill fill-neut" style="width:50%" id="bar-sp500"></div></div><span class="sig-row-val skeleton skeleton-text" id="val-sp500"> </span></div>
+        <div class="sig-row"><span class="sig-row-name">SOX 半導體</span><div class="sig-row-bar"><div class="sig-row-fill fill-neut" style="width:50%" id="bar-sox"></div></div><span class="sig-row-val skeleton skeleton-text" id="val-sox"> </span></div>
+        <div class="sig-row"><span class="sig-row-name">MA200 距離</span><div class="sig-row-bar"><div class="sig-row-fill fill-neut" style="width:50%" id="bar-ma200"></div></div><span class="sig-row-val skeleton skeleton-text" id="val-ma200"> </span></div>
+      </div>
+    </div>
+
+    <div class="card" style="margin-bottom:20px">
+      <div class="card-header">
+        <span class="card-title"><i class="ti ti-target" aria-hidden="true"></i>進場建議</span>
+      </div>
+      <div class="card-body">
+        <div class="sig-row">
+          <span class="sig-row-name">標的</span>
+          <span class="sig-row-val" id="entry-symbol" style="width:auto;text-align:left;flex:1">—</span>
+        </div>
+        <div class="sig-row">
+          <span class="sig-row-name">建議倉位</span>
+          <span class="sig-row-val" id="entry-position" style="width:auto;text-align:left;flex:1">—</span>
+        </div>
+        <div class="sig-row">
+          <span class="sig-row-name">停損設定</span>
+          <span class="sig-row-val" id="entry-stoploss" style="width:auto;text-align:left;flex:1">—</span>
+        </div>
+        <div class="sig-row" style="border-bottom:none">
+          <span class="sig-row-name">理由</span>
+          <span style="font-size:12px;color:var(--text-muted);flex:1" id="entry-reason">載入中...</span>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <div class="divider"></div>
+
+  <!-- Performance -->
+  <div class="section-title">績效摘要</div>
+  <div class="grid4" style="margin-bottom:20px">
+    <div class="card metric-card">
+      <div class="metric-label">年初至今</div>
+      <div class="metric-value" id="perf-ytd">—</div>
+      <div class="metric-sub" id="perf-ytd-sub">載入中</div>
+    </div>
+    <div class="card metric-card">
+      <div class="metric-label">最大回撤</div>
+      <div class="metric-value" id="perf-mdd">—</div>
+      <div class="metric-sub">最大資金回撤</div>
+    </div>
+    <div class="card metric-card">
+      <div class="metric-label">Sharpe Ratio</div>
+      <div class="metric-value" id="perf-sharpe">—</div>
+      <div class="metric-sub" id="perf-sharpe-sub">回測：1.18</div>
+    </div>
+    <div class="card metric-card">
+      <div class="metric-label">勝率</div>
+      <div class="metric-value" id="perf-winrate">—</div>
+      <div class="metric-sub" id="perf-trades-sub">回測：62.4%</div>
+    </div>
+  </div>
+
+  <div class="divider"></div>
+
+  <!-- Positions -->
+  <div class="section-title">目前持倉</div>
+  <div class="card" style="margin-bottom:20px">
+    <div class="card-header" style="padding-bottom:12px">
+      <span class="card-title"><i class="ti ti-briefcase" aria-hidden="true"></i>部位清單</span>
+      <span class="badge badge-gray" id="pos-count">載入中</span>
+    </div>
+    <div style="padding:0 8px 8px">
+      <div id="positions-area">
+        <div class="empty-state">
+          <i class="ti ti-loader" aria-hidden="true" style="animation:spin .8s linear infinite"></i>
+          載入中...
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <div class="divider"></div>
+
+  <!-- System Status -->
+  <div class="section-title">系統狀態</div>
+  <div class="grid2">
+    <div class="card">
+      <div class="card-header"><span class="card-title"><i class="ti ti-server" aria-hidden="true"></i>進程狀態</span></div>
+      <div class="card-body">
+        <div class="status-row">
+          <div class="status-dot dot-green"></div>
+          <span class="status-name">Web API</span>
+          <span class="status-desc">FastAPI — <a href="/docs" target="_blank">Swagger UI</a></span>
+          <span class="badge badge-ok">running</span>
+        </div>
+        <div class="status-row">
+          <div class="status-dot dot-green" id="worker-dot"></div>
+          <span class="status-name">Worker</span>
+          <span class="status-desc">Celery — signals, orders, alerts</span>
+          <span class="badge badge-ok">ready</span>
+        </div>
+        <div class="status-row">
+          <div class="status-dot dot-green"></div>
+          <span class="status-name">Scheduler</span>
+          <span class="status-desc">Beat — 下次排程 04:00 台北</span>
+          <span class="badge badge-ok">running</span>
+        </div>
+        <div class="status-row">
+          <div class="status-dot dot-amber"></div>
+          <span class="status-name">Telegram</span>
+          <span class="status-desc">BOT_TOKEN 待設定</span>
+          <span class="badge badge-warn">待設定</span>
+        </div>
+      </div>
+    </div>
+
+    <div class="card">
+      <div class="card-header"><span class="card-title"><i class="ti ti-calendar-event" aria-hidden="true"></i>排程任務</span></div>
+      <div class="card-body">
+        <div class="status-row">
+          <div class="status-dot dot-green"></div>
+          <span class="status-name" style="width:60px">04:00</span>
+          <span class="status-desc">抓取美股收盤資料（NASDAQ / S&P / SOX）</span>
+        </div>
+        <div class="status-row">
+          <div class="status-dot dot-green"></div>
+          <span class="status-name" style="width:60px">04:05</span>
+          <span class="status-desc">生成 S2 時間差訊號</span>
+        </div>
+        <div class="status-row">
+          <div class="status-dot dot-green"></div>
+          <span class="status-name" style="width:60px">13:35</span>
+          <span class="status-desc">台股收盤後更新持倉</span>
+        </div>
+        <div class="status-row">
+          <div class="status-dot dot-green"></div>
+          <span class="status-name" style="width:60px">13:40</span>
+          <span class="status-desc">每日覆盤（Layer 1~3）</span>
+        </div>
+        <div class="status-row">
+          <div class="status-dot dot-green"></div>
+          <span class="status-name" style="width:60px">月底</span>
+          <span class="status-desc">S1 MA200 趨勢更新</span>
+        </div>
+      </div>
+    </div>
+  </div>
+
+</main>
+
+<script>
+const API = '';
+
+function fmt(n, digits=2) {
+  if (n == null || isNaN(n)) return '—';
+  return (n >= 0 ? '+' : '') + Number(n).toFixed(digits) + '%';
+}
+
+function fmtNum(n, digits=2) {
+  if (n == null || isNaN(n)) return '—';
+  return Number(n).toFixed(digits);
+}
+
+function barWidth(pct, maxPct=5) {
+  const abs = Math.abs(pct);
+  return Math.min(100, (abs / maxPct) * 50 + 50);
+}
+
+function setBar(barId, valId, pct, maxPct=3) {
+  const bar = document.getElementById(barId);
+  const val = document.getElementById(valId);
+  if (!bar || !val) return;
+  const w = barWidth(pct, maxPct);
+  bar.style.width = w + '%';
+  bar.className = 'sig-row-fill ' + (pct > 0.2 ? 'fill-bull' : pct < -0.2 ? 'fill-bear' : 'fill-neut');
+  val.textContent = fmt(pct);
+  val.className = 'sig-row-val ' + (pct > 0.2 ? 'bull' : pct < -0.2 ? 'bear' : '');
+  val.classList.remove('skeleton', 'skeleton-text');
+}
+
+function actionBadge(action) {
+  const map = { BUY:'buy', SELL:'sell', HOLD:'hold', WATCH:'hold', NO_SIGNAL:'gray' };
+  const labelMap = { BUY:'買進 0050', SELL:'賣出 0050', HOLD:'持倉不動', WATCH:'觀察', NO_SIGNAL:'無訊號' };
+  return { cls: 'badge-' + (map[action] || 'gray'), label: labelMap[action] || action };
+}
+
+async function loadSignals() {
+  try {
+    const r = await fetch(API + '/api/v1/signals/current');
+    if (!r.ok) throw new Error(r.statusText);
+    const d = await r.json();
+
+    const trend = d.trend;
+    const td = d.time_diff;
+    const comb = d.combined;
+    const isBull = trend.state === 'ABOVE_MA200';
+
+    const s1 = document.getElementById('s1-val');
+    s1.textContent = isBull ? '多頭' : '空頭';
+    s1.className = 'sig-value ' + (isBull ? 'bull' : 'bear');
+    document.getElementById('s1-sub').textContent = `QQQ 距 MA200 ${fmt(trend.distance_pct)} ＠ ${(+trend.current_price).toFixed(2)}`;
+
+    const isBullTD = td.direction === 'BULL';
+    const s2 = document.getElementById('s2-val');
+    s2.textContent = isBullTD ? '看多' : td.direction === 'BEAR' ? '看空' : '中性';
+    s2.className = 'sig-value ' + (isBullTD ? 'bull' : td.direction === 'BEAR' ? 'bear' : 'neut');
+    document.getElementById('s2-sub').textContent = `信心 ${fmtNum(td.confidence)} | NASDAQ ${fmt(td.nasdaq_change_pct)}`;
+
+    const action = comb.final_action;
+    const { cls, label } = actionBadge(action);
+    const s3 = document.getElementById('s3-val');
+    s3.textContent = label;
+    s3.className = 'sig-value ' + (action === 'BUY' ? 'blue' : action === 'SELL' ? 'bear' : 'neut');
+    document.getElementById('s3-sub').textContent = `建議倉位 ${(comb.suggested_position_pct * 100).toFixed(0)}% ｜ 停損 ${fmt(comb.stop_loss_pct * -1)}`;
+
+    document.getElementById('s3-badge').textContent = label;
+    document.getElementById('s3-badge').className = 'badge ' + cls;
+
+    setBar('bar-nasdaq', 'val-nasdaq', td.nasdaq_change_pct);
+    setBar('bar-sp500', 'val-sp500', td.sp500_change_pct);
+    setBar('bar-sox', 'val-sox', td.sox_change_pct);
+    setBar('bar-ma200', 'val-ma200', trend.distance_pct, 20);
+
+    document.getElementById('entry-symbol').textContent = comb.symbol || '0050';
+    document.getElementById('entry-position').textContent = (comb.suggested_position_pct * 100).toFixed(0) + '% 資金';
+    document.getElementById('entry-stoploss').textContent = fmt(comb.stop_loss_pct * -1) + ' 觸發停損';
+    document.getElementById('entry-reason').textContent = comb.reason || '—';
+
+    const announce = document.getElementById('announce-area');
+    if (action === 'BUY') {
+      announce.innerHTML = `<div class="announce announce-info"><i class="ti ti-bell" aria-hidden="true"></i><span>今日訊號：<strong>買進 ${comb.symbol || '0050'}</strong> — ${comb.reason}</span></div>`;
+    } else {
+      announce.innerHTML = `<div class="announce announce-info"><i class="ti ti-info-circle" aria-hidden="true"></i><span>今日無進場訊號 — 系統持續監控中</span></div>`;
+    }
+
+  } catch (e) {
+    document.getElementById('announce-area').innerHTML = `<div class="announce announce-warn"><i class="ti ti-alert-triangle" aria-hidden="true"></i><span>訊號載入失敗：${e.message}。請確認後端服務正常。</span></div>`;
+    ['s1-val','s2-val','s3-val'].forEach(id => {
+      const el = document.getElementById(id);
+      if (el) { el.textContent = '錯誤'; el.className = 'sig-value bear'; }
+    });
+  }
+}
+
+async function loadPerformance() {
+  try {
+    const r = await fetch(API + '/api/v1/performance');
+    if (!r.ok) throw new Error(r.statusText);
+    const d = await r.json();
+
+    const ytd = document.getElementById('perf-ytd');
+    const ytdVal = d.total_return_pct;
+    ytd.textContent = ytdVal === 0 ? '0.00%' : fmt(ytdVal);
+    ytd.style.color = ytdVal > 0 ? 'var(--green)' : ytdVal < 0 ? 'var(--red)' : 'var(--text)';
+    document.getElementById('perf-ytd-sub').textContent = `總交易 ${d.total_trades} 筆`;
+
+    const mdd = document.getElementById('perf-mdd');
+    mdd.textContent = d.max_drawdown_pct === 0 ? '—' : fmt(d.max_drawdown_pct * -1);
+
+    const sharpe = document.getElementById('perf-sharpe');
+    sharpe.textContent = d.sharpe_ratio === 0 ? '—' : fmtNum(d.sharpe_ratio);
+
+    const winrate = document.getElementById('perf-winrate');
+    winrate.textContent = d.win_rate === 0 ? '—' : (d.win_rate * 100).toFixed(1) + '%';
+
+  } catch(e) {
+    console.error('performance error', e);
+  }
+}
+
+async function loadPositions() {
+  try {
+    const r = await fetch(API + '/api/v1/positions');
+    if (!r.ok) throw new Error(r.statusText);
+    const positions = await r.json();
+
+    document.getElementById('pos-count').textContent = positions.length + ' 個部位';
+    document.getElementById('pos-count').className = 'badge ' + (positions.length > 0 ? 'badge-buy' : 'badge-gray');
+
+    const area = document.getElementById('positions-area');
+    if (positions.length === 0) {
+      area.innerHTML = `<div class="empty-state"><i class="ti ti-mood-empty" aria-hidden="true"></i>目前無持倉 — 系統處於觀察模式</div>`;
+    } else {
+      area.innerHTML = `
+        <table class="pos-table">
+          <thead><tr>
+            <th>代號</th><th>標的</th><th class="right">成本</th>
+            <th class="right">現值</th><th class="right">損益</th><th class="right">倉位</th>
+          </tr></thead>
+          <tbody>
+            ${positions.map(p => {
+              const pnl = ((p.current_price - p.avg_cost) / p.avg_cost * 100).toFixed(2);
+              const isPnlPos = parseFloat(pnl) >= 0;
+              return `<tr>
+                <td><strong>${p.symbol}</strong></td>
+                <td>${p.name || p.symbol}</td>
+                <td class="right">${(+p.avg_cost).toFixed(2)}</td>
+                <td class="right">${(+p.current_price).toFixed(2)}</td>
+                <td class="right ${isPnlPos ? 'bull' : 'bear'}">${isPnlPos ? '+' : ''}${pnl}%</td>
+                <td class="right">${((p.quantity * p.current_price)).toFixed(0)}</td>
+              </tr>`;
+            }).join('')}
+          </tbody>
+        </table>`;
+    }
+  } catch(e) {
+    document.getElementById('positions-area').innerHTML = `<div class="empty-state">載入失敗：${e.message}</div>`;
+  }
+}
+
+async function refreshAll() {
+  const btn = document.getElementById('refresh-btn');
+  btn.classList.add('loading');
+  btn.disabled = true;
+  document.getElementById('last-update-time').textContent = '更新中...';
+  await Promise.all([loadSignals(), loadPerformance(), loadPositions()]);
+  const now = new Date();
+  document.getElementById('last-update-time').textContent = now.toLocaleTimeString('zh-TW');
+  btn.classList.remove('loading');
+  btn.disabled = false;
+}
+
+async function loadMode() {
+  try {
+    const r = await fetch(API + '/api/v1/health');
+    const d = await r.json();
+    const badge = document.getElementById('mode-badge');
+    badge.textContent = d.mode || 'paper';
+    if (d.mode === 'live') badge.style.background = 'var(--green-bg)', badge.style.color = 'var(--green-text)';
+  } catch(e) {}
+}
+
+loadMode();
+refreshAll();
+</script>
+</body>
+</html>

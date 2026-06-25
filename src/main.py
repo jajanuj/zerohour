@@ -1,9 +1,11 @@
 import logging
 import asyncio
 from contextlib import asynccontextmanager
+from pathlib import Path
 
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
+from fastapi.responses import HTMLResponse
 
 from .config import get_settings
 from .api.routes import router
@@ -47,11 +49,7 @@ app.add_middleware(
 app.include_router(router)
 
 
-@app.get("/")
-async def root():
-    return {
-        "name": "ZeroHour",
-        "version": "0.1.0",
-        "mode": settings.trading_mode,
-        "docs": "/docs",
-    }
+@app.get("/", response_class=HTMLResponse)
+async def dashboard():
+    html = (Path(__file__).parent / "static" / "index.html").read_text(encoding="utf-8")
+    return HTMLResponse(content=html)
