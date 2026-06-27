@@ -26,6 +26,10 @@ class Settings(BaseSettings):
     # Alerts
     telegram_bot_token: str = Field(default="")
     telegram_chat_id: str = Field(default="")
+    discord_webhook_url: str = Field(default="")
+
+    # Capital
+    initial_capital: float = Field(default=1_000_000.0)
 
     # Gemini API
     gemini_api_key: str = Field(default="")

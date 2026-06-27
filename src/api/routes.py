@@ -102,8 +102,24 @@ async def get_current_signals():
 
 @router.get("/positions", response_model=list[PositionSchema])
 async def get_positions():
-    """取得目前所有持倉。"""
-    return []
+    """取得目前所有持倉（從 DB 讀取最新快照）。"""
+    try:
+        from ..database.helpers import get_open_positions
+        positions = await get_open_positions()
+        return [
+            PositionSchema(
+                symbol=p["symbol"],
+                quantity=p["quantity"],
+                avg_entry_price=p["avg_entry_price"],
+                current_price=p["current_price"] or p["avg_entry_price"],
+                unrealized_pnl=p["unrealized_pnl"] or 0.0,
+                unrealized_pnl_pct=p["unrealized_pnl_pct"] or 0.0,
+            )
+            for p in positions
+        ]
+    except Exception as e:
+        logger.error(f"get_positions error: {e}")
+        return []
 
 
 @router.post("/orders", response_model=OrderResponse)
@@ -111,23 +127,46 @@ async def create_order(request: OrderRequest):
     """手動建立訂單（需確認 trading_mode）。"""
     if settings.trading_mode == "observe":
         raise HTTPException(status_code=403, detail="系統處於觀察模式，不允許下單")
-    # TODO: 整合 OrderManager
-    raise HTTPException(status_code=501, detail="下單功能待整合 Broker")
+    raise HTTPException(status_code=501, detail="手動下單請透過 Celery 訊號任務執行")
 
 
 @router.get("/performance", response_model=PerformanceResponse)
 async def get_performance():
-    """取得績效摘要。"""
-    # TODO: 從 DB 讀取 performance_snapshots
-    return PerformanceResponse(
-        period="ytd",
-        total_return_pct=0.0,
-        max_drawdown_pct=0.0,
-        win_rate=0.0,
-        total_trades=0,
-        sharpe_ratio=0.0,
-        profit_factor=0.0,
-    )
+    """取得績效摘要（從 DB 最新快照）。"""
+    try:
+        from ..database.helpers import get_latest_performance
+        perf = await get_latest_performance()
+        if not perf:
+            return PerformanceResponse(
+                period="ytd",
+                total_return_pct=0.0,
+                max_drawdown_pct=0.0,
+                win_rate=0.0,
+                total_trades=0,
+                sharpe_ratio=0.0,
+                profit_factor=0.0,
+            )
+        extra = perf.get("extra_data", {}) or {}
+        return PerformanceResponse(
+            period="ytd",
+            total_return_pct=perf["total_return_pct"],
+            max_drawdown_pct=perf["max_drawdown_pct"],
+            win_rate=perf["win_rate"],
+            total_trades=extra.get("total_trades", 0),
+            sharpe_ratio=perf["sharpe_ratio"],
+            profit_factor=0.0,
+        )
+    except Exception as e:
+        logger.error(f"get_performance error: {e}")
+        return PerformanceResponse(
+            period="ytd",
+            total_return_pct=0.0,
+            max_drawdown_pct=0.0,
+            win_rate=0.0,
+            total_trades=0,
+            sharpe_ratio=0.0,
+            profit_factor=0.0,
+        )
 
 
 @router.post("/backtest/run", response_model=BacktestResponse)

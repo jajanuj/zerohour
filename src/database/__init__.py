@@ -1,3 +1,4 @@
+import asyncio
 from sqlalchemy.ext.asyncio import create_async_engine, AsyncSession, async_sessionmaker
 from contextlib import asynccontextmanager
 from typing import AsyncGenerator
@@ -43,3 +44,8 @@ async def drop_db() -> None:
     from .models import Base
     async with async_engine.begin() as conn:
         await conn.run_sync(Base.metadata.drop_all)
+
+
+def sync_run(coro):
+    """Run an async coroutine from sync code (e.g., Celery tasks)."""
+    return asyncio.run(coro)
