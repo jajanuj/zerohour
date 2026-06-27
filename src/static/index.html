@@ -527,15 +527,15 @@ async function loadPositions() {
           </tr></thead>
           <tbody>
             ${positions.map(p => {
-              const pnl = ((p.current_price - p.avg_cost) / p.avg_cost * 100).toFixed(2);
-              const isPnlPos = parseFloat(pnl) >= 0;
+              const pnlPct = (p.unrealized_pnl_pct * 100).toFixed(2);
+              const isPnlPos = parseFloat(pnlPct) >= 0;
               return `<tr>
                 <td><strong>${p.symbol}</strong></td>
-                <td>${p.name || p.symbol}</td>
-                <td class="right">${(+p.avg_cost).toFixed(2)}</td>
+                <td>${p.symbol}</td>
+                <td class="right">${(+p.avg_entry_price).toFixed(2)}</td>
                 <td class="right">${(+p.current_price).toFixed(2)}</td>
-                <td class="right ${isPnlPos ? 'bull' : 'bear'}">${isPnlPos ? '+' : ''}${pnl}%</td>
-                <td class="right">${((p.quantity * p.current_price)).toFixed(0)}</td>
+                <td class="right ${isPnlPos ? 'bull' : 'bear'}">${isPnlPos ? '+' : ''}${pnlPct}%</td>
+                <td class="right">${Math.round(p.quantity * p.current_price).toLocaleString()}</td>
               </tr>`;
             }).join('')}
           </tbody>
