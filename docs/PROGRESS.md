@@ -1,6 +1,6 @@
 # ZeroHour — 開發進度追蹤
 
-> 最後更新：2026-06-27（全面盤點修正）
+> 最後更新：2026-06-27
 
 ---
 
@@ -54,63 +54,52 @@
 
 ---
 
-## ⚠️ 程式碼存在但未接通（空殼）
+## ✅ P1 完成（2026-06-27）：資料持久化
 
-> 這些模組的程式碼已寫好，單元測試也通過，但**尚未整合到完整流程**中。
-
-### 資料未寫入 DB
-系統目前計算訊號、模擬下單，但所有資料都在記憶體中，**沒有持久化到 Supabase**。以下 DB 表格定義好但從未寫入：
+### DB 寫入狀況
 
 | 表格 | 說明 | 狀態 |
 |------|------|------|
-| `trend_signals` | S1 MA200 訊號紀錄 | ❌ 未寫入 |
-| `time_diff_signal_records` | S2 時間差訊號紀錄 | ❌ 未寫入 |
-| `order_records` | 訂單紀錄 | ❌ 未寫入 |
-| `fill_records` | 成交紀錄 | ❌ 未寫入 |
-| `position_snapshots` | 持倉快照 | ❌ 未寫入 |
-| `performance_snapshots` | 績效快照 | ❌ 未寫入 |
-| `review_reports` | 覆盤報告 | ❌ 未寫入 |
-| `edge_decay_alerts` | 優勢衰減警報 | ❌ 未寫入 |
+| `market_prices` | 美股每日收盤價 | ✅ 寫入（fetch_us_market_data，04:00） |
+| `trend_signals` | S1 MA200 訊號紀錄 | ✅ 寫入（generate_signal + check_monthly_trend） |
+| `time_diff_signals` | S2 時間差訊號紀錄 | ✅ 寫入（generate_signal，04:05） |
+| `orders` | 訂單紀錄 | ✅ 寫入（open_position / close_position） |
+| `fills` | 成交紀錄 | ✅ 寫入（open_position / close_position） |
+| `positions` | 持倉快照 | ✅ 寫入（open/close/update_position_price） |
+| `performance_snapshots` | 績效快照 | ✅ 寫入（update_positions，13:35） |
+| `review_reports` | 覆盤報告 | ⏳ 待 P2 |
+| `edge_decay_alerts` | 優勢衰減警報 | ⏳ 待 P2 |
 
-### Celery 任務（空殼）
+### Celery 任務
 
 | 任務 | 排程 | 狀態 |
 |------|------|------|
-| `fetch_us_market_data` | 04:00 | ✅ 有實際邏輯 |
-| `generate_signal` | 04:05 | ✅ 有實際邏輯 |
-| `check_monthly_trend` | 月底 22:00 | ✅ 有實際邏輯 |
-| `update_positions` | 13:35 | ❌ 空殼（只 log） |
-| `run_daily_review` | 13:40 | ❌ 空殼（未呼叫任何 review 模組） |
-| `daily_backup` | 23:00 | ❌ 空殼（只 log） |
-| `run_weekly_review` | 週五 14:00 | ❌ 尚未建立 |
-| `run_monthly_review` | 月底 | ❌ 尚未建立 |
+| `fetch_us_market_data` | 04:00 | ✅ 儲存 market_prices |
+| `generate_signal` | 04:05 | ✅ S1+S2+S3 + Paper 下單 + DB 寫入 |
+| `update_positions` | 13:35 | ✅ 更新現價 + trailing stop + 績效快照 |
+| `check_monthly_trend` | 月底 22:00 | ✅ 儲存 trend_signals |
+| `run_daily_review` | 13:40 | ⏳ stub（P2 實作） |
+| `run_weekly_review` | 週五 14:00 | ⏳ stub（P3 實作） |
+| `daily_backup` | 23:00 | ✅ checkpoint log |
 
-### API 回傳假資料
+### API
 
 | 端點 | 狀態 |
 |------|------|
-| `GET /api/v1/positions` | ❌ 永遠回傳空陣列（未從 DB 讀取） |
-| `GET /api/v1/performance` | ❌ 永遠回傳 0（未從 DB 讀取） |
-| `POST /api/v1/orders` | ❌ 回傳 501（未整合 Broker） |
-| `GET /api/v1/review/weekly/latest` | ❌ 端點不存在 |
-
-### 警報系統
-- [x] `src/alerts/telegram.py` — 程式碼存在
-- ❌ 未在任何 Celery 任務中呼叫（訊號產生後不推播）
-- ❌ BOT_TOKEN 未設定
+| `GET /api/v1/signals/current` | ✅ 即時計算 S1/S2/S3 |
+| `GET /api/v1/positions` | ✅ 從 DB 讀取最新持倉 |
+| `GET /api/v1/performance` | ✅ 從 DB 讀取最新績效快照 |
+| `GET /api/v1/review/daily/latest` | ❌ 端點不存在（P2） |
+| `GET /api/v1/review/weekly/latest` | ❌ 端點不存在（P3） |
 
 ---
 
-## ❌ 尚未實作（第一階段缺口）
+## ❌ 尚未實作（第一階段剩餘）
 
-以下是第一階段應有但完全未寫的功能：
-
-1. **每日覆盤完整流程**：每天 13:40 應呼叫 Layer1→Layer2→Layer3→存 DB→推 Telegram
-2. **每週覆盤**：週五 14:00，本週訊號統計 + Gemini 彙整
-3. **每月覆盤**：月底，重跑回測 vs 實際比對
-4. **訊號 / 下單資料持久化**：目前系統運行不留任何歷史紀錄
-5. **Dashboard 週覆盤區塊**：顯示最新一份週覆盤報告
-6. **GitHub Secrets 設定**：CI/CD 自動部署尚未啟用
+1. **P2 每日覆盤完整流程**：Layer1→Layer2→Layer3(Gemini)→存 review_reports→Discord 推播
+2. **P3 每週覆盤**：週五 14:00，本週訊號統計 + Gemini 彙整 + Dashboard 顯示
+3. **P4 Discord 推播整合**：Webhook URL 待老闆提供，訊號觸發立即推播
+4. **P5 GitHub Secrets / CI/CD**：FLY_API_TOKEN 等 Secrets 設定後自動部署
 
 ---
 
