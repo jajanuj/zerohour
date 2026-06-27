@@ -275,6 +275,92 @@
 
   <div class="divider"></div>
 
+  <!-- Market Context + Black Swan -->
+  <div class="section-title">市場背景分析</div>
+  <div class="grid2" style="margin-bottom:20px">
+    <div class="card">
+      <div class="card-header">
+        <span class="card-title"><i class="ti ti-world" aria-hidden="true"></i>市場背景 Agent</span>
+        <span id="ctx-relevance" class="badge badge-gray">載入中</span>
+      </div>
+      <div class="card-body">
+        <div class="sig-label">主要驅動力</div>
+        <div id="ctx-driver" style="font-size:13px;color:var(--text);margin-bottom:10px;line-height:1.6">—</div>
+        <div class="grid2" style="gap:12px">
+          <div>
+            <div class="sig-label">台股關聯度</div>
+            <div class="sig-value neut" id="ctx-relevance-val">—</div>
+            <div class="sig-sub" id="ctx-reason">—</div>
+          </div>
+          <div>
+            <div class="sig-label">信心修正</div>
+            <div class="sig-value neut" id="ctx-modifier">—</div>
+            <div class="sig-sub">−0.20 ～ +0.20</div>
+          </div>
+        </div>
+      </div>
+    </div>
+    <div class="card">
+      <div class="card-header">
+        <span class="card-title"><i class="ti ti-alert-hexagon" aria-hidden="true"></i>黑天鵝偵測</span>
+        <span id="bs-severity" class="badge badge-ok">NONE</span>
+      </div>
+      <div class="card-body">
+        <div class="sig-label">近 7 天偵測結果</div>
+        <div id="bs-status" style="font-size:22px;font-weight:700;color:var(--green);margin:4px 0 8px">正常</div>
+        <div id="bs-triggers" style="font-size:12px;color:var(--text-muted);line-height:1.7">系統運作正常，無黑天鵝事件</div>
+      </div>
+    </div>
+  </div>
+
+  <!-- Watchlist -->
+  <div class="section-title">選股觀察名單</div>
+  <div class="card" style="margin-bottom:20px">
+    <div class="card-header">
+      <span class="card-title"><i class="ti ti-list-check" aria-hidden="true"></i>Watchlist（台灣科技供應鏈）</span>
+      <span id="watchlist-badge" class="badge badge-gray">載入中</span>
+    </div>
+    <div class="card-body" id="watchlist-area">
+      <div class="empty-state"><i class="ti ti-clock" aria-hidden="true"></i>每週日 20:00 由 4 個 AI Agent 自動選股，首次更新請稍候</div>
+    </div>
+  </div>
+
+  <div class="divider"></div>
+
+  <!-- Weekly Review -->
+  <div class="section-title">週覆盤報告</div>
+  <div class="card" style="margin-bottom:20px">
+    <div class="card-header">
+      <span class="card-title"><i class="ti ti-report-analytics" aria-hidden="true"></i>最新週覆盤</span>
+      <span id="weekly-review-date" class="badge badge-gray">載入中...</span>
+    </div>
+    <div class="card-body" id="weekly-review-body">
+      <div class="grid3" style="margin-bottom:16px">
+        <div>
+          <div class="sig-label">訊號品質分數</div>
+          <div class="sig-value neut" id="weekly-quality-score">—</div>
+          <div class="sig-sub" id="weekly-regime">市場環境 —</div>
+        </div>
+        <div>
+          <div class="sig-label">本週報酬率</div>
+          <div class="sig-value neut" id="weekly-pnl">—</div>
+          <div class="sig-sub" id="weekly-stability">穩定度 —</div>
+        </div>
+        <div>
+          <div class="sig-label">覆盤類型</div>
+          <div class="sig-value neut" id="weekly-type">—</div>
+          <div class="sig-sub">每週五 14:00 更新</div>
+        </div>
+      </div>
+      <div style="border-top: 1px solid var(--border); padding-top: 12px;">
+        <div class="sig-label" style="margin-bottom:8px">AI 分析摘要</div>
+        <div id="weekly-ai-text" style="font-size:13px; color:var(--text-muted); white-space:pre-wrap; max-height:200px; overflow-y:auto; line-height:1.7;">尚無週覆盤資料，請等待每週五 14:00 自動生成。</div>
+      </div>
+    </div>
+  </div>
+
+  <div class="divider"></div>
+
   <!-- System Status -->
   <div class="section-title">系統狀態</div>
   <div class="grid2">
@@ -323,16 +409,6 @@
         </div>
         <div class="status-row">
           <div class="status-dot dot-green"></div>
-          <span class="status-name" style="width:60px">13:35</span>
-          <span class="status-desc">台股收盤後更新持倉</span>
-        </div>
-        <div class="status-row">
-          <div class="status-dot dot-green"></div>
-          <span class="status-name" style="width:60px">13:40</span>
-          <span class="status-desc">每日覆盤（Layer 1~3）</span>
-        </div>
-        <div class="status-row">
-          <div class="status-dot dot-green"></div>
           <span class="status-name" style="width:60px">04:07</span>
           <span class="status-desc">黑天鵝偵測（VIX + NASDAQ）</span>
         </div>
@@ -340,6 +416,16 @@
           <div class="status-dot dot-green"></div>
           <span class="status-name" style="width:60px">04:10</span>
           <span class="status-desc">市場背景 Agent（Gemini）</span>
+        </div>
+        <div class="status-row">
+          <div class="status-dot dot-green"></div>
+          <span class="status-name" style="width:60px">13:35</span>
+          <span class="status-desc">台股收盤後更新持倉</span>
+        </div>
+        <div class="status-row">
+          <div class="status-dot dot-green"></div>
+          <span class="status-name" style="width:60px">13:40</span>
+          <span class="status-desc">每日覆盤（Layer 1~3）</span>
         </div>
         <div class="status-row">
           <div class="status-dot dot-green"></div>
@@ -356,90 +442,6 @@
           <span class="status-name" style="width:60px">月底</span>
           <span class="status-desc">S1 MA200 趨勢更新</span>
         </div>
-      </div>
-    </div>
-  </div>
-
-  <div class="divider"></div>
-
-  <!-- Market Context + Black Swan -->
-  <div class="section-title">市場背景分析</div>
-  <div class="grid2" style="margin-bottom:20px">
-    <div class="card">
-      <div class="card-header">
-        <span class="card-title"><i class="ti ti-world" aria-hidden="true"></i>市場背景 Agent</span>
-        <span id="ctx-relevance" class="badge badge-gray">載入中</span>
-      </div>
-      <div class="card-body">
-        <div class="sig-label">主要驅動力</div>
-        <div id="ctx-driver" style="font-size:13px;color:var(--text);margin-bottom:10px;line-height:1.6">—</div>
-        <div class="grid2" style="gap:12px">
-          <div>
-            <div class="sig-label">台股關聯度</div>
-            <div class="sig-value neut" id="ctx-relevance-val">—</div>
-            <div class="sig-sub" id="ctx-reason">—</div>
-          </div>
-          <div>
-            <div class="sig-label">信心修正</div>
-            <div class="sig-value neut" id="ctx-modifier">—</div>
-            <div class="sig-sub">−0.20 ～ +0.20</div>
-          </div>
-        </div>
-      </div>
-    </div>
-    <div class="card">
-      <div class="card-header">
-        <span class="card-title"><i class="ti ti-alert-hexagon" aria-hidden="true"></i>黑天鵝偵測</span>
-        <span id="bs-severity" class="badge badge-ok">NONE</span>
-      </div>
-      <div class="card-body">
-        <div class="sig-label">近 7 天偵測結果</div>
-        <div id="bs-status" style="font-size:22px;font-weight:700;color:var(--green);margin:4px 0 8px">正常</div>
-        <div id="bs-triggers" style="font-size:12px;color:var(--text-muted);line-height:1.7">系統運作正常，無黑天鵝事件</div>
-      </div>
-    </div>
-  </div>
-
-  <!-- Watchlist -->
-  <div class="section-title">選股觀察名單</div>
-  <div class="card" style="margin-bottom:20px">
-    <div class="card-header">
-      <span class="card-title"><i class="ti ti-list-check" aria-hidden="true"></i>Watchlist</span>
-      <span id="watchlist-badge" class="badge badge-gray">載入中</span>
-    </div>
-    <div class="card-body" id="watchlist-area">
-      <div class="empty-state"><i class="ti ti-clock" aria-hidden="true"></i>每週日 20:00 自動更新，選股 Pipeline 尚未執行</div>
-    </div>
-  </div>
-
-  <!-- Weekly Review -->
-  <div class="section-title">週覆盤報告</div>
-  <div class="card" style="margin-bottom:20px">
-    <div class="card-header">
-      <span class="card-title"><i class="ti ti-report-analytics" aria-hidden="true"></i>最新週覆盤</span>
-      <span id="weekly-review-date" class="badge badge-gray">載入中...</span>
-    </div>
-    <div class="card-body" id="weekly-review-body">
-      <div class="grid3" style="margin-bottom:16px">
-        <div>
-          <div class="sig-label">訊號品質分數</div>
-          <div class="sig-value neut" id="weekly-quality-score">—</div>
-          <div class="sig-sub" id="weekly-regime">市場環境 —</div>
-        </div>
-        <div>
-          <div class="sig-label">本週報酬率</div>
-          <div class="sig-value neut" id="weekly-pnl">—</div>
-          <div class="sig-sub" id="weekly-stability">穩定度 —</div>
-        </div>
-        <div>
-          <div class="sig-label">覆盤類型</div>
-          <div class="sig-value neut" id="weekly-type">—</div>
-          <div class="sig-sub">每週五 14:00 更新</div>
-        </div>
-      </div>
-      <div style="border-top: 1px solid var(--border); padding-top: 12px;">
-        <div class="sig-label" style="margin-bottom:8px">AI 分析摘要</div>
-        <div id="weekly-ai-text" style="font-size:13px; color:var(--text-muted); white-space:pre-wrap; max-height:200px; overflow-y:auto; line-height:1.7;">尚無週覆盤資料，請等待每週五 14:00 自動生成。</div>
       </div>
     </div>
   </div>
