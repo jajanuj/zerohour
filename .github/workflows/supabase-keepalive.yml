@@ -9,18 +9,32 @@ jobs:
   ping:
     runs-on: ubuntu-latest
     steps:
-      - name: Ping Supabase Database
+      - name: Ping Supabase Auth Health
         run: |
           STATUS=$(curl -s -o /dev/null -w "%{http_code}" \
-            "${{ secrets.SUPABASE_URL }}/rest/v1/market_prices?limit=1" \
-            -H "apikey: ${{ secrets.SUPABASE_ANON_KEY }}" \
-            -H "Authorization: Bearer ${{ secrets.SUPABASE_ANON_KEY }}")
+            "${{ secrets.SUPABASE_URL }}/auth/v1/health")
 
-          echo "Supabase ping status: $STATUS"
+          echo "Supabase health status: $STATUS"
 
           if [ "$STATUS" != "200" ]; then
-            echo "❌ Supabase ping failed with status $STATUS"
+            echo "❌ Supabase health check failed with status $STATUS"
             exit 1
           fi
 
           echo "✅ Supabase is alive"
+
+      - name: Ping Supabase REST API
+        run: |
+          STATUS=$(curl -s -o /dev/null -w "%{http_code}" \
+            "${{ secrets.SUPABASE_URL }}/rest/v1/" \
+            -H "apikey: ${{ secrets.SUPABASE_ANON_KEY }}" \
+            -H "Authorization: Bearer ${{ secrets.SUPABASE_ANON_KEY }}")
+
+          echo "Supabase REST status: $STATUS"
+
+          if [ "$STATUS" = "401" ]; then
+            echo "❌ Supabase REST authentication failed (check SUPABASE_ANON_KEY)"
+            exit 1
+          fi
+
+          echo "✅ Supabase REST API is reachable (status: $STATUS)"
