@@ -20,6 +20,7 @@ class BacktestConfig:
     nasdaq_threshold: float = 1.5
     stop_loss_pct: float = 0.12
     trailing_stop_pct: float = 0.15
+    strategy: str = "S3"  # "S1" | "S2" | "S3"
 
 
 @dataclass
@@ -89,7 +90,36 @@ class BacktestEngine:
                 sp500_change_pct=float(row.get("sp500_chg", 0)),
                 sox_change_pct=float(row.get("sox_chg", 0)),
             )
-            combined = self.aggregator.aggregate(trend_sig, time_sig)
+
+            strategy = self.config.strategy
+            if strategy == "S1":
+                # Pure trend: buy when BULL, exit when BEAR (ignore S2)
+                from ..signals.ma200_filter import TrendState
+                if trend_sig.state == TrendState.BULL and position == 0:
+                    combined = self.aggregator.aggregate(trend_sig, time_sig)
+                    combined.final_action = FinalAction.BUY
+                    combined.suggested_position_pct = 0.95
+                elif trend_sig.state == TrendState.BEAR and position > 0:
+                    combined = self.aggregator.aggregate(trend_sig, time_sig)
+                    combined.final_action = FinalAction.EXIT_ALL
+                else:
+                    combined = self.aggregator.aggregate(trend_sig, time_sig)
+                    combined.final_action = FinalAction.HOLD
+            elif strategy == "S2":
+                # Pure time-diff: ignore MA200 trend filter
+                from ..signals.ma200_filter import MA200Signal, TrendState as _TS
+                bull_trend = MA200Signal(
+                    symbol=trend_sig.symbol,
+                    date=trend_sig.date,
+                    state=_TS.BULL,
+                    current_price=trend_sig.current_price,
+                    ma200=trend_sig.ma200,
+                    distance_pct=trend_sig.distance_pct,
+                    is_newly_crossed=False,
+                )
+                combined = self.aggregator.aggregate(bull_trend, time_sig)
+            else:
+                combined = self.aggregator.aggregate(trend_sig, time_sig)
 
             # 停損 / 平倉檢查
             if position > 0:

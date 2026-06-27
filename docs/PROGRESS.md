@@ -1,6 +1,6 @@
 # ZeroHour — 開發進度追蹤
 
-> 最後更新：2026-06-27（第二階段完成）
+> 最後更新：2026-06-28（第三階段完成）
 
 ---
 
@@ -152,6 +152,47 @@
 - 市場背景卡片（驅動力 / 台股關聯度 / 信心修正值）
 - 黑天鵝偵測卡片（NONE / WATCH / ALERT / CRITICAL）
 - Watchlist 表格（代號 / 分數 / 推薦 / 論點 / 進場條件）
+
+---
+
+---
+
+## ✅ 第三階段完成（2026-06-28）
+
+### 新功能：手動觸發 API
+`POST /api/v1/tasks/{task_name}` — 8 個允許的任務名稱
+
+| 任務名稱 | 說明 |
+|---------|------|
+| `fetch_us_market_data` | 抓取美股資料 |
+| `generate_signal` | 生成今日 S1/S2/S3 訊號 |
+| `update_positions` | 更新持倉現價 |
+| `run_daily_review` | 執行每日覆盤 |
+| `run_weekly_review` | 執行週覆盤 |
+| `run_market_context` | 市場背景 Agent |
+| `check_black_swan` | 黑天鵝偵測 |
+| `run_stock_selection` | 選股 Pipeline |
+
+### 新功能：資金曲線圖
+- `GET /api/v1/performance/history?days=60` — 每日資金快照
+- Dashboard Chart.js 折線圖，顯示 NT$ 總資金 + 報酬率
+
+### 新功能：S1/S2/S3 回測比較
+- `POST /api/v1/backtest/compare` — 三策略並排回測
+- BacktestEngine 加入 `strategy` 參數（S1/S2/S3）
+- Dashboard 表格顯示，最佳值綠色標注
+
+### 新功能：訊號歷史頁
+- `GET /api/v1/signals/history?days=30` — 近 30 天訊號紀錄
+- Dashboard 表格：日期 / S2 方向 / 信心 / 三大指數 / S1 趨勢 / 建議動作
+
+### 新功能：E2E 測試套件
+- `tests/e2e/test_api_e2e.py` — httpx API 測試（17 個 test case）
+- `tests/e2e/test_dashboard_playwright.py` — Playwright 瀏覽器測試（需 `pip install playwright pytest-playwright`）
+
+### DB helpers 新增
+- `get_performance_history(days)` → `performance_snapshots` 表
+- `get_signal_history(days)` → `time_diff_signals` 表 + 對應最近 `trend_signals`
 
 ---
 

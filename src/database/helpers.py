@@ -689,6 +689,62 @@ async def get_watchlist() -> list[dict]:
         ]
 
 
+async def get_performance_history(days: int = 60) -> list[dict]:
+    """Return performance snapshots for the last N days, oldest first."""
+    cutoff = datetime.utcnow() - timedelta(days=days)
+    async with get_session() as session:
+        result = await session.execute(
+            select(PerformanceSnapshot)
+            .where(PerformanceSnapshot.snapshot_date >= cutoff)
+            .order_by(PerformanceSnapshot.snapshot_date)
+        )
+        rows = result.scalars().all()
+        return [
+            {
+                "date": r.snapshot_date.strftime("%Y-%m-%d"),
+                "total_equity": float(r.total_equity or 0),
+                "total_return_pct": float(r.total_return_pct or 0),
+                "daily_pnl": float(r.daily_pnl or 0),
+            }
+            for r in rows
+        ]
+
+
+async def get_signal_history(days: int = 30) -> list[dict]:
+    """Return last N days of time-diff signals with nearest trend context."""
+    cutoff = datetime.utcnow() - timedelta(days=days)
+    async with get_session() as session:
+        result = await session.execute(
+            select(TimeDiffSignalRecord)
+            .where(TimeDiffSignalRecord.generated_at >= cutoff)
+            .order_by(desc(TimeDiffSignalRecord.generated_at))
+        )
+        rows = result.scalars().all()
+
+        output = []
+        for r in rows:
+            trend_result = await session.execute(
+                select(TrendSignal)
+                .where(TrendSignal.signal_date <= r.generated_at)
+                .order_by(desc(TrendSignal.signal_date))
+                .limit(1)
+            )
+            trend = trend_result.scalars().first()
+            output.append({
+                "date": r.generated_at.strftime("%Y-%m-%d"),
+                "direction": r.direction,
+                "confidence": float(r.confidence or 0),
+                "nasdaq_change_pct": float(r.nasdaq_change_pct or 0),
+                "sp500_change_pct": float(r.sp500_change_pct or 0),
+                "sox_change_pct": float(r.sox_change_pct or 0),
+                "suggested_action": r.suggested_action or "",
+                "trigger_reason": r.trigger_reason or "",
+                "trend_state": trend.state if trend else "UNKNOWN",
+                "ma200_distance": float(trend.distance_pct or 0) if trend else 0.0,
+            })
+        return output
+
+
 async def log_agent_run(
     run_type: str,
     symbol: str | None,

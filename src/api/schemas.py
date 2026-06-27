@@ -135,3 +135,55 @@ class BacktestResponse(BaseModel):
     win_rate: float
     total_trades: int
     profit_factor: float
+
+
+class PerformanceHistoryItem(BaseModel):
+    date: str
+    total_equity: float
+    total_return_pct: float
+    daily_pnl: float
+
+
+class SignalHistoryItem(BaseModel):
+    date: str
+    direction: str
+    confidence: float
+    nasdaq_change_pct: float
+    sp500_change_pct: float
+    sox_change_pct: float
+    suggested_action: str
+    trigger_reason: str
+    trend_state: str
+    ma200_distance: float
+
+
+class BacktestCompareRequest(BaseModel):
+    symbol: str = Field(default="0050")
+    start_date: str = Field(default="2020-01-01")
+    end_date: str = Field(default="2026-01-01")
+    initial_capital: float = Field(default=1_000_000)
+    nasdaq_threshold: float = Field(default=1.5)
+
+
+class StrategyResult(BaseModel):
+    strategy: str
+    total_return_pct: float
+    annualized_return_pct: float
+    max_drawdown_pct: float
+    sharpe_ratio: float
+    win_rate: float
+    total_trades: int
+    profit_factor: float
+
+
+class BacktestCompareResponse(BaseModel):
+    symbol: str
+    start_date: str
+    end_date: str
+    results: list[StrategyResult]
+
+
+class TaskTriggerResponse(BaseModel):
+    status: str
+    task: str
+    message: str = ""

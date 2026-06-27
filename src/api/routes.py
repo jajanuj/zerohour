@@ -17,6 +17,12 @@ from .schemas import (
     WatchlistItemSchema,
     BacktestRequest,
     BacktestResponse,
+    PerformanceHistoryItem,
+    SignalHistoryItem,
+    BacktestCompareRequest,
+    BacktestCompareResponse,
+    StrategyResult,
+    TaskTriggerResponse,
 )
 from ..config import get_settings
 
@@ -226,6 +232,113 @@ async def get_watchlist():
     except Exception as e:
         logger.error(f"get_watchlist error: {e}")
         return []
+
+
+_ALLOWED_TASKS = {
+    "run_daily_review",
+    "run_weekly_review",
+    "run_market_context",
+    "check_black_swan",
+    "run_stock_selection",
+    "fetch_us_market_data",
+    "generate_signal",
+    "update_positions",
+}
+
+
+@router.post("/tasks/{task_name}", response_model=TaskTriggerResponse)
+async def trigger_task(task_name: str):
+    """手動觸發指定 Celery 任務（立即執行）。"""
+    if task_name not in _ALLOWED_TASKS:
+        from fastapi import HTTPException
+        raise HTTPException(status_code=400, detail=f"不允許的任務名稱：{task_name}。允許清單：{sorted(_ALLOWED_TASKS)}")
+    try:
+        import importlib
+        tasks_module = importlib.import_module("src.tasks")
+        task_fn = getattr(tasks_module, task_name)
+        task_fn.delay()
+        return TaskTriggerResponse(status="queued", task=task_name, message="任務已加入 Celery 佇列")
+    except Exception as e:
+        logger.error(f"trigger_task {task_name} error: {e}")
+        return TaskTriggerResponse(status="error", task=task_name, message=str(e))
+
+
+@router.get("/performance/history", response_model=list[PerformanceHistoryItem])
+async def get_performance_history(days: int = 60):
+    """取得最近 N 天的每日資金快照（資金曲線用）。"""
+    try:
+        from ..database.helpers import get_performance_history
+        return await get_performance_history(days)
+    except Exception as e:
+        logger.error(f"get_performance_history error: {e}")
+        return []
+
+
+@router.get("/signals/history", response_model=list[SignalHistoryItem])
+async def get_signal_history(days: int = 30):
+    """取得最近 N 天的訊號紀錄。"""
+    try:
+        from ..database.helpers import get_signal_history
+        return await get_signal_history(days)
+    except Exception as e:
+        logger.error(f"get_signal_history error: {e}")
+        return []
+
+
+@router.post("/backtest/compare", response_model=BacktestCompareResponse)
+async def run_backtest_compare(request: BacktestCompareRequest):
+    """S1 / S2 / S3 三策略並排回測比較。"""
+    from ..backtest.engine import BacktestEngine, BacktestConfig
+    from ..data.fetcher import USMarketFetcher, TWMarketFetcher
+    from ..data.normalizer import DataNormalizer
+
+    try:
+        fetcher = USMarketFetcher()
+        tw_fetcher = TWMarketFetcher()
+        normalizer = DataNormalizer()
+
+        nasdaq_df = normalizer.normalize_ohlcv(fetcher.get_historical("nasdaq", period="10y"))
+        nasdaq_df = normalizer.calculate_change_pct(nasdaq_df)
+        sp500_df = normalizer.normalize_ohlcv(fetcher.get_historical("sp500", period="10y"))
+        sp500_df = normalizer.calculate_change_pct(sp500_df)
+        sox_df = normalizer.normalize_ohlcv(fetcher.get_historical("sox", period="10y"))
+        sox_df = normalizer.calculate_change_pct(sox_df)
+        us_signals = normalizer.merge_us_signals(nasdaq_df, sp500_df, sox_df)
+
+        price_raw = tw_fetcher.get_historical(request.symbol, period="10y")
+        price_df = normalizer.normalize_ohlcv(price_raw)
+
+        results = []
+        for strat in ["S1", "S2", "S3"]:
+            cfg = BacktestConfig(
+                symbol=request.symbol,
+                start_date=request.start_date,
+                end_date=request.end_date,
+                initial_capital=request.initial_capital,
+                nasdaq_threshold=request.nasdaq_threshold,
+                strategy=strat,
+            )
+            res = BacktestEngine(cfg).run(price_df, us_signals)
+            results.append(StrategyResult(
+                strategy=strat,
+                total_return_pct=res.total_return_pct,
+                annualized_return_pct=res.annualized_return_pct,
+                max_drawdown_pct=res.max_drawdown_pct,
+                sharpe_ratio=res.sharpe_ratio,
+                win_rate=res.win_rate,
+                total_trades=res.total_trades,
+                profit_factor=res.profit_factor,
+            ))
+
+        return BacktestCompareResponse(
+            symbol=request.symbol,
+            start_date=request.start_date,
+            end_date=request.end_date,
+            results=results,
+        )
+    except Exception as e:
+        logger.error(f"backtest compare 失敗: {e}")
+        raise HTTPException(status_code=500, detail=str(e))
 
 
 @router.post("/backtest/run", response_model=BacktestResponse)
