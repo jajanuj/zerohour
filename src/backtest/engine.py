@@ -149,7 +149,34 @@ class BacktestEngine:
 
         eq_index = merged["date"].iloc[len(merged) - len(equity_curve):]
         equity_series = pd.Series(equity_curve, index=eq_index)
-        metrics = PerformanceMetrics(equity_series, self.config.initial_capital)
+
+        # Filter to requested date range for metric calculation
+        active_series = equity_series.copy()
+        active_trades = trade_log.copy()
+
+        if self.config.start_date:
+            start_ts = pd.Timestamp(self.config.start_date)
+            active_series = active_series[active_series.index >= start_ts]
+            active_trades = [
+                t for t in trade_log
+                if pd.Timestamp(str(t.get("date", "1900-01-01"))) >= start_ts
+            ]
+
+        if self.config.end_date:
+            end_ts = pd.Timestamp(self.config.end_date)
+            active_series = active_series[active_series.index <= end_ts]
+            active_trades = [
+                t for t in active_trades
+                if pd.Timestamp(str(t.get("date", "1900-01-01"))) <= end_ts
+            ]
+
+        # Reference capital: portfolio value at the start of the requested period
+        ref_capital = float(active_series.iloc[0]) if len(active_series) > 0 else self.config.initial_capital
+
+        metrics = PerformanceMetrics(
+            active_series if len(active_series) > 0 else equity_series,
+            ref_capital,
+        )
 
         return BacktestResult(
             config=self.config,
@@ -157,9 +184,9 @@ class BacktestEngine:
             annualized_return_pct=metrics.annualized_return_pct,
             max_drawdown_pct=metrics.max_drawdown_pct,
             sharpe_ratio=metrics.sharpe_ratio,
-            win_rate=metrics.win_rate(trade_log),
-            total_trades=len([t for t in trade_log if t["action"] == "SELL"]),
-            profit_factor=metrics.profit_factor(trade_log),
-            equity_curve=equity_series,
-            trade_log=trade_log,
+            win_rate=metrics.win_rate(active_trades),
+            total_trades=len([t for t in active_trades if t["action"] == "SELL"]),
+            profit_factor=metrics.profit_factor(active_trades),
+            equity_curve=active_series if len(active_series) > 0 else equity_series,
+            trade_log=active_trades,
         )
