@@ -1,145 +1,145 @@
 # ZeroHour — 開發進度追蹤
 
-> 最後更新：2026-06-23
+> 最後更新：2026-06-27（全面盤點修正）
 
 ---
 
-## ✅ 已完成
+## ✅ 已完成且驗證通過
 
-### Phase A：環境與目錄結構（2026-06-23）
-- [x] git init 初始化 Repo
-- [x] Python 3.11.9 安裝
-- [x] 建立完整專案目錄結構
-- [x] 所有 `__init__.py` 佔位檔
-- [x] `.gitignore`、`pyproject.toml`、`.env.example`
-- [x] `src/config.py`（pydantic-settings 全域設定）
-- [x] 語法驗證通過
+### 基礎設施
+- [x] Git repo、目錄結構、pyproject.toml、.gitignore
+- [x] Python 3.11、pydantic-settings 設定管理
+- [x] Supabase PostgreSQL 連線（Session pooler IPv4）
+- [x] Upstash Redis 連線（TLS，Celery broker/backend）
+- [x] Fly.io 部署（東京，web×2 + worker + scheduler）
+- [x] Docker build、GitHub Actions CI/CD 設定
 
-### Phase B：核心 Python 模組（2026-06-23）
-- [x] `src/data/fetcher.py` — USMarketFetcher / TWMarketFetcher
-- [x] `src/data/normalizer.py` — DataNormalizer
-- [x] `src/data/store.py` — DataStore（in-memory 快取）
-- [x] `src/signals/ma200_filter.py` — S1：200MA 趨勢過濾
-- [x] `src/signals/time_diff.py` — S2：台美時間差訊號
-- [x] `src/signals/aggregator.py` — S3：組合策略整合器
-- [x] `src/risk/stop_loss.py` — 停損管理器
-- [x] `src/risk/position_sizer.py` — 倉位計算器
-- [x] `src/risk/exposure.py` — 曝險控制 + 每日熔斷
-- [x] `src/execution/brokers/base.py` — 券商抽象介面
-- [x] `src/execution/brokers/paper.py` — 模擬帳戶
-- [x] `src/execution/order_manager.py` — 訂單管理器
-- [x] `src/execution/fill_tracker.py` — 成交追蹤
-- [x] `src/alerts/telegram.py` — Telegram 警報
-- [x] `src/backtest/engine.py` — 向量化回測引擎
-- [x] `src/backtest/metrics.py` — 績效指標計算
-- [x] 全部 16 個模組語法驗證通過
+### 核心交易引擎（第一階段）
+- [x] S1：MA200 趨勢過濾器（`src/signals/ma200_filter.py`）
+- [x] S2：台美時間差訊號（`src/signals/time_diff.py`）
+- [x] S3：組合策略決策（`src/signals/aggregator.py`）
+- [x] 停損管理（`src/risk/stop_loss.py`）
+- [x] 倉位計算（`src/risk/position_sizer.py`）
+- [x] 曝險控制 + 熔斷機制（`src/risk/exposure.py`）
+- [x] Paper Broker 模擬下單（`src/execution/brokers/paper.py`）
+- [x] 訂單管理器（`src/execution/order_manager.py`）
+- [x] 成交追蹤（`src/execution/fill_tracker.py`）
+- [x] 回測引擎（`src/backtest/engine.py`）— 0050 2015-2024，年化+8%，Sharpe 1.18
 
-### Phase C：資料庫層（2026-06-23）
-- [x] `src/database/models.py` — 完整 SQLAlchemy models（18 張資料表）
-- [x] `src/database/__init__.py` — async engine + session factory
-- [x] Alembic 初始化 + env.py 設定
-- [x] 語法驗證通過
+### 覆盤模組（程式碼存在，模組邏輯測試通過）
+- [x] Layer 1 合規檢查（`src/review/layer1_compliance.py`）
+- [x] Layer 2 訊號品質分析（`src/review/layer2_signal_quality.py`）
+- [x] Layer 3 AI 覆盤 Gemini（`src/review/layer3_ai_analysis.py`）
+- [x] 市場環境分類器（`src/review/market_regime.py`）
+- [x] 優勢衰減偵測（`src/review/edge_decay.py`）
+- [x] 過度擬合防護（`src/review/overfit_guard.py`）
+- [x] 穩定度評分（`src/review/stability_scorer.py`）
+- [x] 基準比較器（`src/review/benchmark.py`）
+- [x] 人為干預追蹤（`src/review/override_tracker.py`）
+- [x] 策略版本管理（`src/review/version_manager.py`）
+- [x] 稅後損益計算（`src/review/tax_calculator.py`）
 
-### Phase D：FastAPI + Celery（2026-06-23）
-- [x] `src/api/schemas.py` — Pydantic 請求/回應 schema
-- [x] `src/api/routes.py` — API 端點：/health, /signals/current, /positions, /orders, /performance, /backtest/run
-- [x] `src/tasks.py` — Celery 任務 + beat 排程（04:00/04:05/13:35/13:40/22:00/23:00）
-- [x] `src/main.py` — FastAPI app + lifespan + CORS
-- [x] 語法驗證通過
+### API / 前端
+- [x] FastAPI Web Server（`/health`、`/signals/current`、`/positions`、`/performance`、`/backtest/run`）
+- [x] Dashboard UI（`src/static/index.html`），即時從 API 抓取資料
+- [x] Swagger UI（`/docs`）
 
-### Phase E：覆盤系統 §12（2026-06-23）
-- [x] `src/review/layer1_compliance.py` — 規則遵守度檢查
-- [x] `src/review/layer2_signal_quality.py` — 訊號品質分析
-- [x] `src/review/layer3_ai_analysis.py` — Claude API AI 覆盤
-- [x] `src/review/market_regime.py` — 市場環境分類器
-- [x] `src/review/version_manager.py` — 策略版本管理
-- [x] `src/review/override_tracker.py` — 人為干預追蹤
-- [x] `src/review/benchmark.py` — 基準比較器
-- [x] `src/review/edge_decay.py` — 優勢衰減偵測
-- [x] `src/review/overfit_guard.py` — 過度擬合防護
-- [x] `src/review/stability_scorer.py` — 穩定度評分
-- [x] `src/review/tax_calculator.py` — 稅後損益計算
-- [x] 語法驗證通過
-
-### Phase F：單元測試套件（2026-06-23）
-- [x] `tests/unit/test_ma200_filter.py` — 8 個測試
-- [x] `tests/unit/test_time_diff.py` — 10 個測試
-- [x] `tests/unit/test_aggregator.py` — 8 個測試
-- [x] `tests/unit/test_stop_loss.py` — 8 個測試
-- [x] `tests/unit/test_position_sizer.py` — 6 個測試
-- [x] `tests/unit/test_paper_broker.py` — 7 個測試
-- [x] **全部 47 個測試通過（0 failures）**
-
-### Phase G：部署設定（2026-06-23）
-- [x] `docker/Dockerfile`
-- [x] `fly.toml`（Fly.io 東京節點）
-- [x] `.github/workflows/test.yml`
-- [x] `.github/workflows/deploy.yml`
-- [x] `.github/workflows/supabase-keepalive.yml`
-- [x] `scripts/setup_db.py`
-- [x] `scripts/run_backtest.py`
-
----
-
-## ✅ E2E 測試全部通過（2026-06-23）
-
-| # | 測試項目 | 結果 |
-|---|---------|------|
-| 1 | 資料庫初始化（SQLite 18張表） | ✅ PASS |
-| 2 | 美股資料抓取（Yahoo Finance） | ✅ PASS |
-| 3 | S2 時間差訊號生成（真實資料） | ✅ PASS |
-| 4 | S1 MA200 趨勢濾網（真實資料） | ✅ PASS |
-| 5 | S3 組合訊號決策（S1+S2） | ✅ PASS |
-| 6 | FastAPI /health、/signals/current、/performance、/positions | ✅ PASS |
-| 7 | FastAPI POST /backtest/run HTTP 端點 | ✅ PASS |
-| 8 | FastAPI POST /orders 觀察模式攔截 | ✅ PASS |
-| 9 | 回測引擎（0050, 2015-2024）— 年化+8%, Sharpe 1.18 | ✅ PASS |
-| 10 | Paper Trading 完整下單 + 停損觸發 | ✅ PASS |
-| 11 | 覆盤 Layer 1：規則遵守度 | ✅ PASS |
-| 12 | 覆盤 Layer 2：訊號品質分析 | ✅ PASS |
-| 13 | 市場環境分類器 | ✅ PASS |
-| 14 | 稅後損益計算 | ✅ PASS |
-| 15 | 穩定度評分器 | ✅ PASS |
-| 16 | 優勢衰減偵測（含自動暫停） | ✅ PASS |
-| 17 | 基準比較器（策略 vs 0050） | ✅ PASS |
-| 18 | 過度擬合防護 | ✅ PASS |
-| 19 | 策略版本管理 | ✅ PASS |
-| 20 | 人為干預追蹤 | ✅ PASS |
-| 21 | Celery 任務邏輯（6個任務直接呼叫） | ✅ PASS |
-
-**憑證驗證全部完成：**
+### 憑證驗證
 | 項目 | 狀態 |
 |------|------|
-| Supabase PostgreSQL | ✅ 連線成功，18 張資料表建立完成 |
-| Gemini API（Layer 3 AI 覆盤） | ✅ gemini-2.5-flash 回應正常 |
-| Upstash Redis（Celery broker） | ✅ Ping 成功，Read/Write 驗證通過 |
-| Telegram 推播 | ⏳ 待設定 BOT_TOKEN |
+| Supabase PostgreSQL | ✅ 連線成功，18 張表建立完成 |
+| Gemini API（gemini-2.5-flash） | ✅ 回應正常 |
+| Upstash Redis | ✅ Ping / Read / Write 驗證通過 |
+| Telegram 推播 | ⏳ BOT_TOKEN 待設定 |
 
 ---
 
-## ✅ Fly.io 部署完成（2026-06-24）
+## ⚠️ 程式碼存在但未接通（空殼）
 
-| 進程 | 狀態 | 說明 |
+> 這些模組的程式碼已寫好，單元測試也通過，但**尚未整合到完整流程**中。
+
+### 資料未寫入 DB
+系統目前計算訊號、模擬下單，但所有資料都在記憶體中，**沒有持久化到 Supabase**。以下 DB 表格定義好但從未寫入：
+
+| 表格 | 說明 | 狀態 |
 |------|------|------|
-| web (×2) | ✅ started | Uvicorn 0.0.0.0:8080 正常 |
-| worker | ✅ started | celery@d89506... ready |
-| scheduler | ✅ started | beat: Starting... |
+| `trend_signals` | S1 MA200 訊號紀錄 | ❌ 未寫入 |
+| `time_diff_signal_records` | S2 時間差訊號紀錄 | ❌ 未寫入 |
+| `order_records` | 訂單紀錄 | ❌ 未寫入 |
+| `fill_records` | 成交紀錄 | ❌ 未寫入 |
+| `position_snapshots` | 持倉快照 | ❌ 未寫入 |
+| `performance_snapshots` | 績效快照 | ❌ 未寫入 |
+| `review_reports` | 覆盤報告 | ❌ 未寫入 |
+| `edge_decay_alerts` | 優勢衰減警報 | ❌ 未寫入 |
 
-**部署網址：** https://zerohour-trading-engine.fly.dev/
+### Celery 任務（空殼）
 
-### 修復的問題
-| 問題 | 修法 |
+| 任務 | 排程 | 狀態 |
+|------|------|------|
+| `fetch_us_market_data` | 04:00 | ✅ 有實際邏輯 |
+| `generate_signal` | 04:05 | ✅ 有實際邏輯 |
+| `check_monthly_trend` | 月底 22:00 | ✅ 有實際邏輯 |
+| `update_positions` | 13:35 | ❌ 空殼（只 log） |
+| `run_daily_review` | 13:40 | ❌ 空殼（未呼叫任何 review 模組） |
+| `daily_backup` | 23:00 | ❌ 空殼（只 log） |
+| `run_weekly_review` | 週五 14:00 | ❌ 尚未建立 |
+| `run_monthly_review` | 月底 | ❌ 尚未建立 |
+
+### API 回傳假資料
+
+| 端點 | 狀態 |
 |------|------|
-| setuptools.backends.legacy 不存在 | pyproject.toml 改用 setuptools.build_meta |
-| fly.toml services 缺 processes | 加 `processes = ["web"]` |
-| Celery rediss:// SSL 驗證失敗 | REDIS_URL 附加 `?ssl_cert_reqs=CERT_NONE` |
+| `GET /api/v1/positions` | ❌ 永遠回傳空陣列（未從 DB 讀取） |
+| `GET /api/v1/performance` | ❌ 永遠回傳 0（未從 DB 讀取） |
+| `POST /api/v1/orders` | ❌ 回傳 501（未整合 Broker） |
+| `GET /api/v1/review/weekly/latest` | ❌ 端點不存在 |
+
+### 警報系統
+- [x] `src/alerts/telegram.py` — 程式碼存在
+- ❌ 未在任何 Celery 任務中呼叫（訊號產生後不推播）
+- ❌ BOT_TOKEN 未設定
 
 ---
 
-## ⏳ 待處理
+## ❌ 尚未實作（第一階段缺口）
 
-- Telegram Bot 設定（TELEGRAM_BOT_TOKEN + TELEGRAM_CHAT_ID）
-- GitHub Secrets 設定（FLY_API_TOKEN、SUPABASE_URL、SUPABASE_ANON_KEY）— 用於 CI/CD
+以下是第一階段應有但完全未寫的功能：
+
+1. **每日覆盤完整流程**：每天 13:40 應呼叫 Layer1→Layer2→Layer3→存 DB→推 Telegram
+2. **每週覆盤**：週五 14:00，本週訊號統計 + Gemini 彙整
+3. **每月覆盤**：月底，重跑回測 vs 實際比對
+4. **訊號 / 下單資料持久化**：目前系統運行不留任何歷史紀錄
+5. **Dashboard 週覆盤區塊**：顯示最新一份週覆盤報告
+6. **GitHub Secrets 設定**：CI/CD 自動部署尚未啟用
+
+---
+
+## ❌ 尚未實作（第二階段 — 等第一階段穩定後）
+
+> 計劃文件 §13，目前只有空目錄和 DB 表格定義
+
+| 功能 | 說明 |
+|------|------|
+| Market Context Agent | 分析整體市場環境（`src/agents/market_context_agent.py`，未建立）|
+| 黑天鵝偵測 Agent | 偵測尾部風險事件（`src/agents/black_swan_agent.py`，未建立）|
+| 基本面選股 Agent | 護城河 + 成長性分析 |
+| 催化劑選股 Agent | 業績 / 新聞觸發因素 |
+| 供應鏈選股 Agent | 台灣供應鏈相關性 |
+| 技術面選股 Agent | 型態確認 |
+| 選股整合 Pipeline | 輸出最終 Watchlist |
+| Watchlist 管理 | DB 寫入 + Dashboard 顯示 |
+
+---
+
+## 📋 建議優先順序（第一階段補完）
+
+| 優先 | 項目 | 說明 |
+|------|------|------|
+| P1 | 資料持久化 | 訊號、訂單、持倉寫入 Supabase，API 從 DB 讀取 |
+| P2 | 每日覆盤完整流程 | Layer1+2+3 串接 → 存 DB → Telegram |
+| P3 | 每週覆盤 | 週五 14:00，Gemini 分析 + Dashboard 顯示 |
+| P4 | Telegram 推播整合 | 設定 BOT_TOKEN，訊號觸發立即推播 |
+| P5 | GitHub Secrets / CI/CD | 自動部署啟用 |
 
 ---
 
@@ -149,5 +149,6 @@
 |------|------|
 | SQLite 作為本地開發 DB | 無需本地安裝 PostgreSQL，prod 仍用 Supabase |
 | pydantic-settings 管理設定 | 型別安全 + .env 自動載入 |
-| in-memory DataStore | 開發階段快速驗證，整合 DB 後替換 |
 | Alembic 使用 sync URL | alembic 本身不支援 async，env.py 自動轉換 |
+| Celery rediss:// + CERT_NONE | Upstash Redis TLS 要求，URL 直接附加 ssl_cert_reqs |
+| Gemini 取代 Claude API | 避免額外付費，gemini-2.5-flash 免費方案夠用 |
