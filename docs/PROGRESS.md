@@ -89,17 +89,36 @@
 | `GET /api/v1/signals/current` | ✅ 即時計算 S1/S2/S3 |
 | `GET /api/v1/positions` | ✅ 從 DB 讀取最新持倉 |
 | `GET /api/v1/performance` | ✅ 從 DB 讀取最新績效快照 |
-| `GET /api/v1/review/daily/latest` | ❌ 端點不存在（P2） |
-| `GET /api/v1/review/weekly/latest` | ❌ 端點不存在（P3） |
+| `GET /api/v1/review/daily/latest` | ✅ 回傳最新每日覆盤 |
+| `GET /api/v1/review/weekly/latest` | ✅ 回傳最新週覆盤 |
+
+## ✅ P2 完成（2026-06-27）：每日覆盤完整流程
+
+`run_daily_review`（13:40）：
+- Layer1 合規檢查 → Layer2 訊號品質 → Layer3 Gemini AI 分析
+- 市場環境分類（MA50/MA200/VIX）
+- 儲存 `review_reports` 表格 → Discord 推播
+
+## ✅ P3 完成（2026-06-27）：週覆盤
+
+`run_weekly_review`（週五 14:00）：
+- 彙整本週所有訊號 + 交易紀錄
+- `run_weekly_ai_review`：Gemini 週報 prompt
+- 儲存 `review_reports`（週一日期，避免 unique 衝突）
+- Discord 週報推播
+- Dashboard 週覆盤區塊（訊號品質 / 市場環境 / AI 摘要）
+
+## ✅ P4 完成（2026-06-27）：Discord 推播
+
+- `src/alerts/discord.py`：5 種推播（訊號/成交/停損/每日摘要/週覆盤）
+- DISCORD_WEBHOOK_URL 已設定至 Fly.io secrets
+- 整合到 generate_signal / update_positions / run_daily_review / run_weekly_review
 
 ---
 
 ## ❌ 尚未實作（第一階段剩餘）
 
-1. **P2 每日覆盤完整流程**：Layer1→Layer2→Layer3(Gemini)→存 review_reports→Discord 推播
-2. **P3 每週覆盤**：週五 14:00，本週訊號統計 + Gemini 彙整 + Dashboard 顯示
-3. **P4 Discord 推播整合**：Webhook URL 待老闆提供，訊號觸發立即推播
-4. **P5 GitHub Secrets / CI/CD**：FLY_API_TOKEN 等 Secrets 設定後自動部署
+1. **P5 GitHub Secrets / CI/CD**：需要老闆操作（見下方說明）
 
 ---
 
