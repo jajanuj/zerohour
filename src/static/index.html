@@ -300,10 +300,10 @@
           <span class="badge badge-ok">running</span>
         </div>
         <div class="status-row">
-          <div class="status-dot dot-amber"></div>
-          <span class="status-name">Telegram</span>
-          <span class="status-desc">BOT_TOKEN 待設定</span>
-          <span class="badge badge-warn">待設定</span>
+          <div class="status-dot dot-green"></div>
+          <span class="status-name">Discord</span>
+          <span class="status-desc">Webhook 推播已啟用</span>
+          <span class="badge badge-ok">ready</span>
         </div>
       </div>
     </div>
@@ -333,9 +333,48 @@
         </div>
         <div class="status-row">
           <div class="status-dot dot-green"></div>
+          <span class="status-name" style="width:60px">週五 14:00</span>
+          <span class="status-desc">週覆盤（Gemini AI 分析）</span>
+        </div>
+        <div class="status-row">
+          <div class="status-dot dot-green"></div>
           <span class="status-name" style="width:60px">月底</span>
           <span class="status-desc">S1 MA200 趨勢更新</span>
         </div>
+      </div>
+    </div>
+  </div>
+
+  <div class="divider"></div>
+
+  <!-- Weekly Review -->
+  <div class="section-title">週覆盤報告</div>
+  <div class="card" style="margin-bottom:20px">
+    <div class="card-header">
+      <span class="card-title"><i class="ti ti-report-analytics" aria-hidden="true"></i>最新週覆盤</span>
+      <span id="weekly-review-date" class="badge badge-gray">載入中...</span>
+    </div>
+    <div class="card-body" id="weekly-review-body">
+      <div class="grid3" style="margin-bottom:16px">
+        <div>
+          <div class="sig-label">訊號品質分數</div>
+          <div class="sig-value neut" id="weekly-quality-score">—</div>
+          <div class="sig-sub" id="weekly-regime">市場環境 —</div>
+        </div>
+        <div>
+          <div class="sig-label">本週報酬率</div>
+          <div class="sig-value neut" id="weekly-pnl">—</div>
+          <div class="sig-sub" id="weekly-stability">穩定度 —</div>
+        </div>
+        <div>
+          <div class="sig-label">覆盤類型</div>
+          <div class="sig-value neut" id="weekly-type">—</div>
+          <div class="sig-sub">每週五 14:00 更新</div>
+        </div>
+      </div>
+      <div style="border-top: 1px solid var(--border); padding-top: 12px;">
+        <div class="sig-label" style="margin-bottom:8px">AI 分析摘要</div>
+        <div id="weekly-ai-text" style="font-size:13px; color:var(--text-muted); white-space:pre-wrap; max-height:200px; overflow-y:auto; line-height:1.7;">尚無週覆盤資料，請等待每週五 14:00 自動生成。</div>
       </div>
     </div>
   </div>
@@ -507,12 +546,47 @@ async function loadPositions() {
   }
 }
 
+async function loadWeeklyReview() {
+  try {
+    const r = await fetch(API + '/api/v1/review/weekly/latest');
+    if (!r.ok) return;
+    const d = await r.json();
+    if (!d) return;
+
+    document.getElementById('weekly-review-date').textContent = d.review_date || '—';
+    document.getElementById('weekly-review-date').className = 'badge badge-ok';
+
+    const qs = d.signal_quality_score;
+    const qEl = document.getElementById('weekly-quality-score');
+    qEl.textContent = qs != null ? qs.toFixed(0) + '/100' : '—';
+    qEl.className = 'sig-value ' + (qs >= 70 ? 'bull' : qs >= 50 ? 'neut' : 'bear');
+
+    document.getElementById('weekly-regime').textContent = '市場環境：' + (d.market_regime || '—');
+
+    const pnl = d.net_pnl;
+    const pnlEl = document.getElementById('weekly-pnl');
+    pnlEl.textContent = pnl != null && pnl !== 0 ? 'NT$ ' + (pnl >= 0 ? '+' : '') + Math.round(pnl).toLocaleString() : '—';
+    pnlEl.className = 'sig-value ' + (pnl > 0 ? 'bull' : pnl < 0 ? 'bear' : 'neut');
+
+    const stab = d.stability_score;
+    document.getElementById('weekly-stability').textContent = stab ? '穩定度：' + stab.toFixed(0) + '/100' : '穩定度 —';
+
+    document.getElementById('weekly-type').textContent = d.review_type === 'weekly' ? '週覆盤' : d.review_type || '—';
+
+    if (d.ai_analysis) {
+      document.getElementById('weekly-ai-text').textContent = d.ai_analysis;
+    }
+  } catch(e) {
+    console.warn('weekly review load failed', e);
+  }
+}
+
 async function refreshAll() {
   const btn = document.getElementById('refresh-btn');
   btn.classList.add('loading');
   btn.disabled = true;
   document.getElementById('last-update-time').textContent = '更新中...';
-  await Promise.all([loadSignals(), loadPerformance(), loadPositions()]);
+  await Promise.all([loadSignals(), loadPerformance(), loadPositions(), loadWeeklyReview()]);
   const now = new Date();
   document.getElementById('last-update-time').textContent = now.toLocaleTimeString('zh-TW');
   btn.classList.remove('loading');

@@ -146,6 +146,58 @@ class DiscordAlerter:
         }
         return await self._post({"embeds": [embed]})
 
+    async def daily_review(
+        self,
+        compliance_score: float,
+        quality_score: float,
+        signal_correct: bool,
+        regime: str,
+        ai_summary: str,
+    ) -> bool:
+        avg = (compliance_score + quality_score) / 2
+        color = _COLOR["BUY"] if avg >= 75 else _COLOR["WARNING"] if avg >= 50 else _COLOR["SELL"]
+        embed = {
+            "title": "ZeroHour 每日覆盤完成",
+            "color": color,
+            "fields": [
+                {"name": "合規分數", "value": f"{compliance_score:.0f}/100", "inline": True},
+                {"name": "訊號品質", "value": f"{quality_score:.0f}/100", "inline": True},
+                {"name": "訊號方向", "value": "正確" if signal_correct else "錯誤", "inline": True},
+                {"name": "市場環境", "value": regime or "—", "inline": True},
+                {"name": "AI 分析摘要", "value": ai_summary[:800] if ai_summary else "—", "inline": False},
+            ],
+            "footer": {"text": "ZeroHour Daily Review"},
+            "timestamp": datetime.utcnow().isoformat(),
+        }
+        return await self._post({"embeds": [embed]})
+
+    async def weekly_review(
+        self,
+        week_label: str,
+        signal_count: int,
+        signal_accuracy: float,
+        trade_count: int,
+        weekly_return_pct: float,
+        market_regime: str,
+        ai_summary: str,
+    ) -> bool:
+        color = _COLOR["BUY"] if weekly_return_pct >= 0 else _COLOR["SELL"]
+        embed = {
+            "title": f"ZeroHour 週覆盤 — {week_label}",
+            "color": color,
+            "fields": [
+                {"name": "本週訊號數", "value": str(signal_count), "inline": True},
+                {"name": "方向準確率", "value": f"{signal_accuracy:.0%}", "inline": True},
+                {"name": "本週交易", "value": f"{trade_count} 筆", "inline": True},
+                {"name": "週報酬率", "value": f"{weekly_return_pct:+.2%}", "inline": True},
+                {"name": "市場環境", "value": market_regime or "—", "inline": True},
+                {"name": "AI 週報", "value": ai_summary[:800] if ai_summary else "—", "inline": False},
+            ],
+            "footer": {"text": "ZeroHour Weekly Review"},
+            "timestamp": datetime.utcnow().isoformat(),
+        }
+        return await self._post({"embeds": [embed]})
+
     async def system_error(self, task_name: str, error: str) -> bool:
         embed = {
             "title": f"ZeroHour 系統錯誤 — {task_name}",

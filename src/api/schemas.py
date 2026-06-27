@@ -40,8 +40,21 @@ class CurrentSignalsResponse(BaseModel):
 class PositionSchema(BaseModel):
     symbol: str
     quantity: float
-    avg_price: float
-    market_value: Optional[float] = None
+    avg_entry_price: float
+    current_price: float
+    unrealized_pnl: float = 0.0
+    unrealized_pnl_pct: float = 0.0
+
+
+class ReviewReportSchema(BaseModel):
+    review_date: str
+    review_type: str
+    compliance_score: Optional[float] = None
+    signal_quality_score: Optional[float] = None
+    ai_analysis: Optional[str] = None
+    market_regime: Optional[str] = None
+    stability_score: Optional[float] = None
+    net_pnl: Optional[float] = None
 
 
 class OrderRequest(BaseModel):

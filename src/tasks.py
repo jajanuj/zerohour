@@ -336,20 +336,267 @@ def update_positions():
 
 @celery_app.task(name="src.tasks.run_daily_review")
 def run_daily_review():
-    """13:40 每日覆盤（Layer 1~3 + 優勢衰減偵測）。"""
-    logger.info("Running daily review...")
-    # TODO (P2): Layer1 → Layer2 → Layer3(Gemini) → save ReviewReport → Discord notify
-    return {"status": "ok", "note": "stub — P2 will implement full review pipeline"}
+    """13:40 每日覆盤：Layer1 合規 → Layer2 品質 → Layer3 AI → DB → Discord。"""
+    from datetime import date
+    from .database import sync_run
+    from .database.helpers import (
+        get_today_signal, get_today_orders, get_open_positions,
+        get_latest_performance, save_review_report,
+    )
+    from .review.layer1_compliance import RuleComplianceChecker
+    from .review.layer2_signal_quality import analyze_signal_quality
+    from .review.layer3_ai_analysis import run_ai_review
+    from .review.market_regime import classify_regime
+    from .data.fetcher import USMarketFetcher, TWMarketFetcher
+    from .data.normalizer import DataNormalizer
+    from .alerts.discord import get_alerter
+
+    try:
+        today_signal = sync_run(get_today_signal())
+        if not today_signal:
+            logger.info("No signal today — skip daily review")
+            return {"status": "skipped", "reason": "no signal"}
+
+        today_orders = sync_run(get_today_orders())
+        trade_dict = {}
+        if today_orders:
+            o = today_orders[0]
+            trade_dict = {
+                "direction": o["direction"],
+                "entry_price": o["filled_price"],
+                "stop_loss_price": o["filled_price"] * (1 - settings.index_stop_loss_pct),
+                "entry_time": o["filled_at"],
+                "pnl_pct": 0.0,
+            }
+
+        # Taiwan market data for Layer 2
+        tw_open_chg = tw_close_chg = 0.0
+        try:
+            tw_fetcher = TWMarketFetcher()
+            norm = DataNormalizer()
+            tw_raw = tw_fetcher.get_historical(SYMBOL, period="10d")
+            tw_df = norm.normalize_ohlcv(tw_raw)
+            if len(tw_df) >= 2:
+                prev_close = float(tw_df.iloc[-2]["close"])
+                today_open = float(tw_df.iloc[-1]["open"] or tw_df.iloc[-1]["close"])
+                today_close = float(tw_df.iloc[-1]["close"])
+                tw_open_chg = (today_open - prev_close) / prev_close * 100
+                tw_close_chg = (today_close - prev_close) / prev_close * 100
+        except Exception as e:
+            logger.warning(f"TW market data fetch failed: {e}")
+
+        # Market regime
+        regime_val = "未知"
+        try:
+            us_fetcher = USMarketFetcher()
+            norm = DataNormalizer()
+            qqq_raw = us_fetcher.get_historical("qqq", period="1y")
+            qqq_df = norm.normalize_ohlcv(qqq_raw)
+            vix_data = us_fetcher.get_latest_close("vix")
+            vix = float(vix_data.get("close", 20.0))
+            if len(qqq_df) >= 200:
+                import pandas as pd
+                closes = qqq_df["close"].astype(float)
+                ma50 = float(closes.rolling(50).mean().iloc[-1])
+                ma200 = float(closes.rolling(200).mean().iloc[-1])
+                high30 = float(closes.tail(30).max())
+                low30 = float(closes.tail(30).min())
+                range30 = (high30 - low30) / low30 * 100
+                regime_val = classify_regime(ma50, ma200, vix, range30).value
+        except Exception as e:
+            logger.warning(f"Market regime calc failed: {e}")
+
+        # Layer 1
+        config = {
+            "us_signal_threshold": settings.us_signal_threshold,
+            "index_stop_loss_pct": settings.index_stop_loss_pct,
+        }
+        checker = RuleComplianceChecker()
+        compliance = checker.check(trade_dict, today_signal, config)
+        compliance_dict = {
+            "score": compliance.score,
+            "violations": [
+                {"rule": v.rule, "expected": v.expected, "actual": v.actual, "severity": v.severity}
+                for v in compliance.violations
+            ],
+        }
+
+        # Layer 2
+        quality = analyze_signal_quality(
+            today_signal,
+            {"taiwan_open_change_pct": tw_open_chg, "taiwan_close_change_pct": tw_close_chg},
+            trade_dict,
+        )
+        quality_dict = {
+            "quality_score": quality.quality_score,
+            "signal_was_correct": quality.signal_was_correct,
+            "nasdaq_change_pct": quality.nasdaq_change_pct,
+            "sox_change_pct": quality.sox_change_pct,
+            "taiwan_open_change_pct": quality.taiwan_open_change_pct,
+            "taiwan_close_change_pct": quality.taiwan_close_change_pct,
+        }
+
+        perf = sync_run(get_latest_performance()) or {}
+        rolling_stats = {
+            "win_rate_30d": perf.get("win_rate", 0),
+            "sharpe_30d": perf.get("sharpe_ratio", 0),
+            "vs_benchmark_pct": 0.0,
+        }
+
+        # Layer 3 AI (Gemini)
+        ai_text = sync_run(run_ai_review(
+            compliance=compliance_dict,
+            signal_quality=quality_dict,
+            trade=trade_dict,
+            rolling_stats=rolling_stats,
+        ))
+
+        # Save to DB
+        sync_run(save_review_report(
+            review_date=date.today(),
+            review_type="daily",
+            compliance_score=compliance.score,
+            signal_quality_score=quality.quality_score,
+            ai_analysis=ai_text,
+            net_pnl=0.0,
+            stability_score=0.0,
+            market_regime=regime_val,
+        ))
+
+        # Discord
+        alerter = get_alerter()
+        sync_run(alerter.daily_review(
+            compliance_score=compliance.score,
+            quality_score=quality.quality_score,
+            signal_correct=quality.signal_was_correct,
+            regime=regime_val,
+            ai_summary=ai_text[:600],
+        ))
+
+        logger.info(f"Daily review done: L1={compliance.score:.0f} L2={quality.quality_score:.0f} regime={regime_val}")
+        return {
+            "status": "ok",
+            "compliance_score": compliance.score,
+            "signal_quality_score": quality.quality_score,
+            "market_regime": regime_val,
+        }
+
+    except Exception as e:
+        logger.error(f"run_daily_review failed: {e}", exc_info=True)
+        try:
+            from .alerts.discord import get_alerter
+            sync_run(get_alerter().system_error("run_daily_review", str(e)))
+        except Exception:
+            pass
+        return {"status": "error", "reason": str(e)}
 
 
 # ── 任務：週覆盤 ──────────────────────────────────────────────────────
 
 @celery_app.task(name="src.tasks.run_weekly_review")
 def run_weekly_review():
-    """週五 14:00 週覆盤。"""
-    logger.info("Running weekly review...")
-    # TODO (P3): Analyze week's signals → Gemini summary → save ReviewReport → Discord notify
-    return {"status": "ok", "note": "stub — P3 will implement weekly review"}
+    """週五 14:00 週覆盤：本週訊號統計 → Gemini 彙整 → DB → Discord。"""
+    from datetime import date, timedelta
+    from .database import sync_run
+    from .database.helpers import (
+        get_week_signals, get_week_orders, get_latest_performance, save_review_report,
+    )
+    from .review.layer3_ai_analysis import run_weekly_ai_review
+    from .review.market_regime import classify_regime
+    from .data.fetcher import USMarketFetcher
+    from .data.normalizer import DataNormalizer
+    from .alerts.discord import get_alerter
+
+    try:
+        week_signals = sync_run(get_week_signals())
+        week_orders = sync_run(get_week_orders())
+
+        # Signal accuracy
+        correct = sum(
+            1 for s in week_signals
+            if (s["direction"] == "UP" and s["suggested_action"] == "BUY")
+            or (s["direction"] == "DOWN" and s["suggested_action"] == "SELL")
+            or s["suggested_action"] == "HOLD"
+        )
+        signal_accuracy = correct / len(week_signals) if week_signals else 0.0
+
+        # Weekly return from performance
+        perf = sync_run(get_latest_performance()) or {}
+        weekly_return_pct = float(perf.get("total_return_pct", 0))
+
+        # Market regime
+        regime_val = "未知"
+        try:
+            us_fetcher = USMarketFetcher()
+            norm = DataNormalizer()
+            qqq_raw = us_fetcher.get_historical("qqq", period="1y")
+            qqq_df = norm.normalize_ohlcv(qqq_raw)
+            vix_data = us_fetcher.get_latest_close("vix")
+            vix = float(vix_data.get("close", 20.0))
+            if len(qqq_df) >= 200:
+                closes = qqq_df["close"].astype(float)
+                ma50 = float(closes.rolling(50).mean().iloc[-1])
+                ma200 = float(closes.rolling(200).mean().iloc[-1])
+                high30 = float(closes.tail(30).max())
+                low30 = float(closes.tail(30).min())
+                range30 = (high30 - low30) / low30 * 100
+                regime_val = classify_regime(ma50, ma200, vix, range30).value
+        except Exception as e:
+            logger.warning(f"Market regime calc failed: {e}")
+
+        today = date.today()
+        monday = today - timedelta(days=today.weekday())
+        week_label = f"{monday.strftime('%m/%d')}–{today.strftime('%m/%d')}"
+
+        ai_text = sync_run(run_weekly_ai_review(
+            week_label=week_label,
+            signals=week_signals,
+            orders=week_orders,
+            weekly_return_pct=weekly_return_pct,
+            signal_accuracy=signal_accuracy,
+            market_regime=regime_val,
+        ))
+
+        # Save — use Monday's date to avoid unique collision with daily review on Friday
+        sync_run(save_review_report(
+            review_date=monday,
+            review_type="weekly",
+            compliance_score=0,
+            signal_quality_score=signal_accuracy * 100,
+            ai_analysis=ai_text,
+            net_pnl=0.0,
+            stability_score=0.0,
+            market_regime=regime_val,
+        ))
+
+        # Discord
+        alerter = get_alerter()
+        sync_run(alerter.weekly_review(
+            week_label=week_label,
+            signal_count=len(week_signals),
+            signal_accuracy=signal_accuracy,
+            trade_count=len(week_orders),
+            weekly_return_pct=weekly_return_pct,
+            market_regime=regime_val,
+            ai_summary=ai_text[:600],
+        ))
+
+        logger.info(f"Weekly review done: signals={len(week_signals)} trades={len(week_orders)}")
+        return {
+            "status": "ok",
+            "week": week_label,
+            "signal_count": len(week_signals),
+            "trade_count": len(week_orders),
+        }
+
+    except Exception as e:
+        logger.error(f"run_weekly_review failed: {e}", exc_info=True)
+        try:
+            from .alerts.discord import get_alerter
+            sync_run(get_alerter().system_error("run_weekly_review", str(e)))
+        except Exception:
+            pass
+        return {"status": "error", "reason": str(e)}
 
 
 # ── 任務：月底 MA200 趨勢檢查 ─────────────────────────────────────────

@@ -1,6 +1,6 @@
 """Async DB helper functions used by Celery tasks and API routes."""
 import logging
-from datetime import datetime
+from datetime import datetime, date, timedelta
 from sqlalchemy import select, and_, func, desc
 
 from . import get_session
@@ -12,6 +12,7 @@ from .models import (
     FillRecord,
     PositionSnapshot,
     PerformanceSnapshot,
+    ReviewReport,
 )
 
 logger = logging.getLogger(__name__)
@@ -371,6 +372,174 @@ async def save_performance_snapshot(
             sharpe_ratio=0,
             extra_data={"total_trades": total_trades},
         ))
+
+
+async def get_today_signal() -> dict | None:
+    """Return today's latest time-diff signal record."""
+    today_start = datetime.utcnow().replace(hour=0, minute=0, second=0, microsecond=0)
+    async with get_session() as session:
+        # Also get latest trend signal
+        trend_result = await session.execute(
+            select(TrendSignal).order_by(desc(TrendSignal.id)).limit(1)
+        )
+        trend = trend_result.scalars().first()
+
+        result = await session.execute(
+            select(TimeDiffSignalRecord).where(
+                TimeDiffSignalRecord.generated_at >= today_start
+            ).order_by(desc(TimeDiffSignalRecord.id)).limit(1)
+        )
+        sig = result.scalars().first()
+        if not sig:
+            return None
+        return {
+            "id": sig.id,
+            "direction": sig.direction,
+            "confidence": float(sig.confidence or 0),
+            "nasdaq_change_pct": float(sig.nasdaq_change_pct or 0),
+            "sp500_change_pct": float(sig.sp500_change_pct or 0),
+            "sox_change_pct": float(sig.sox_change_pct or 0),
+            "trigger_reason": sig.trigger_reason,
+            "suggested_action": sig.suggested_action,
+            "trend_state": trend.state if trend else "UNKNOWN",
+        }
+
+
+async def get_today_orders() -> list[dict]:
+    """Return orders created today."""
+    today_start = datetime.utcnow().replace(hour=0, minute=0, second=0, microsecond=0)
+    async with get_session() as session:
+        result = await session.execute(
+            select(OrderRecord).where(
+                and_(
+                    OrderRecord.created_at >= today_start,
+                    OrderRecord.status == "FILLED",
+                )
+            ).order_by(OrderRecord.created_at)
+        )
+        rows = result.scalars().all()
+        return [
+            {
+                "direction": r.direction,
+                "symbol": r.symbol,
+                "quantity": float(r.quantity),
+                "filled_price": float(r.filled_price or 0),
+                "filled_at": r.filled_at,
+                "pnl_pct": 0.0,
+            }
+            for r in rows
+        ]
+
+
+async def get_week_signals() -> list[dict]:
+    """Return time-diff signals from this Mon through today."""
+    today = datetime.utcnow().date()
+    monday = today - timedelta(days=today.weekday())
+    week_start = datetime.combine(monday, datetime.min.time())
+    async with get_session() as session:
+        result = await session.execute(
+            select(TimeDiffSignalRecord).where(
+                TimeDiffSignalRecord.generated_at >= week_start
+            ).order_by(TimeDiffSignalRecord.generated_at)
+        )
+        rows = result.scalars().all()
+        return [
+            {
+                "date": r.generated_at.date().isoformat(),
+                "direction": r.direction,
+                "confidence": float(r.confidence or 0),
+                "nasdaq_change_pct": float(r.nasdaq_change_pct or 0),
+                "suggested_action": r.suggested_action,
+            }
+            for r in rows
+        ]
+
+
+async def get_week_orders() -> list[dict]:
+    """Return orders from this Mon through today."""
+    today = datetime.utcnow().date()
+    monday = today - timedelta(days=today.weekday())
+    week_start = datetime.combine(monday, datetime.min.time())
+    async with get_session() as session:
+        result = await session.execute(
+            select(OrderRecord).where(
+                and_(
+                    OrderRecord.created_at >= week_start,
+                    OrderRecord.status == "FILLED",
+                )
+            ).order_by(OrderRecord.created_at)
+        )
+        rows = result.scalars().all()
+        return [
+            {
+                "direction": r.direction,
+                "symbol": r.symbol,
+                "quantity": float(r.quantity),
+                "filled_price": float(r.filled_price or 0),
+                "filled_at": r.filled_at,
+            }
+            for r in rows
+        ]
+
+
+async def save_review_report(
+    review_date: date,
+    review_type: str,
+    compliance_score: float = 0,
+    signal_quality_score: float = 0,
+    ai_analysis: str = "",
+    net_pnl: float = 0,
+    stability_score: float = 0,
+    market_regime: str = "",
+) -> None:
+    """Upsert a ReviewReport. Weekly review uses Mon date to avoid unique collision."""
+    async with get_session() as session:
+        existing = await session.execute(
+            select(ReviewReport).where(ReviewReport.review_date == review_date)
+        )
+        report = existing.scalars().first()
+        if report:
+            report.review_type = review_type
+            report.compliance_score = compliance_score
+            report.signal_quality_score = signal_quality_score
+            report.ai_analysis = ai_analysis
+            report.net_pnl = net_pnl
+            report.stability_score = stability_score
+            report.market_regime = market_regime
+        else:
+            session.add(ReviewReport(
+                review_date=review_date,
+                review_type=review_type,
+                compliance_score=compliance_score,
+                signal_quality_score=signal_quality_score,
+                ai_analysis=ai_analysis,
+                net_pnl=net_pnl,
+                stability_score=stability_score,
+                market_regime=market_regime,
+            ))
+
+
+async def get_latest_review(review_type: str) -> dict | None:
+    """Return latest ReviewReport of the given type."""
+    async with get_session() as session:
+        result = await session.execute(
+            select(ReviewReport).where(
+                ReviewReport.review_type == review_type
+            ).order_by(desc(ReviewReport.review_date)).limit(1)
+        )
+        row = result.scalars().first()
+        if not row:
+            return None
+        return {
+            "review_date": row.review_date.isoformat(),
+            "review_type": row.review_type,
+            "compliance_score": float(row.compliance_score or 0),
+            "signal_quality_score": float(row.signal_quality_score or 0),
+            "ai_analysis": row.ai_analysis or "",
+            "market_regime": row.market_regime or "",
+            "stability_score": float(row.stability_score or 0),
+            "net_pnl": float(row.net_pnl or 0),
+        }
 
 
 async def get_latest_performance() -> dict | None:

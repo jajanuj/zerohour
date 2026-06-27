@@ -83,3 +83,69 @@ vs 基準（0050 買入持有）：{rolling_stats.get('vs_benchmark_pct', 0):+.2
     except Exception as e:
         logger.error(f"AI 覆盤呼叫失敗: {e}")
         return f"AI 覆盤執行失敗：{e}"
+
+
+async def run_weekly_ai_review(
+    week_label: str,
+    signals: list[dict],
+    orders: list[dict],
+    weekly_return_pct: float,
+    signal_accuracy: float,
+    market_regime: str,
+) -> str:
+    """呼叫 Gemini 進行週覆盤分析。"""
+    if not settings.gemini_api_key:
+        return "（AI 覆盤未啟用：未設定 GEMINI_API_KEY）"
+
+    signals_summary = "\n".join(
+        f"  {s['date']}: {s['direction']} | NASDAQ {s['nasdaq_change_pct']:+.2f}% | 動作={s['suggested_action']}"
+        for s in signals
+    ) or "  本週無訊號"
+
+    orders_summary = "\n".join(
+        f"  {o['direction']} {o['symbol']} x{o['quantity']:.0f} @ {o['filled_price']:.2f} ({o['filled_at'].strftime('%m/%d') if o.get('filled_at') else 'N/A'})"
+        for o in orders
+    ) or "  本週無交易"
+
+    prompt = f"""
+{AI_REVIEW_SYSTEM_PROMPT}
+
+請分析以下本週（{week_label}）交易週覆盤數據：
+
+【本週訊號紀錄】
+{signals_summary}
+
+【本週交易紀錄】
+{orders_summary}
+
+【週統計】
+訊號方向準確率：{signal_accuracy:.1%}
+週報酬率：{weekly_return_pct:+.2%}
+市場環境：{market_regime}
+
+請提供：
+1. **本週市場環境總結**（2–3 句）
+2. **訊號品質評估**（方向準確性如何？有沒有漏信號或假信號？）
+3. **交易執行評估**（進出場時機、倉位管理）
+4. **本週優化建議**（有數據支撐，否則說明樣本不足）
+5. **下週注意事項**
+
+格式：使用 Markdown，每個區塊清楚標示。字數控制在 600 字以內。
+"""
+
+    try:
+        async with httpx.AsyncClient(timeout=30.0) as client:
+            resp = await client.post(
+                f"https://generativelanguage.googleapis.com/v1/models/gemini-2.5-flash:generateContent?key={settings.gemini_api_key}",
+                headers={"Content-Type": "application/json"},
+                json={
+                    "contents": [{"parts": [{"text": prompt}]}],
+                    "generationConfig": {"maxOutputTokens": 1200},
+                },
+            )
+            resp.raise_for_status()
+            data = resp.json()
+            return data["candidates"][0]["content"]["parts"][0]["text"]
+    except Exception as e:
+        logger.error(f"週 AI 覆盤呼叫失敗: {e}")
+        return f"週 AI 覆盤執行失敗：{e}"

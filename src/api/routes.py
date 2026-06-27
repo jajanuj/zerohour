@@ -11,6 +11,7 @@ from .schemas import (
     OrderRequest,
     OrderResponse,
     PerformanceResponse,
+    ReviewReportSchema,
     BacktestRequest,
     BacktestResponse,
 )
@@ -167,6 +168,28 @@ async def get_performance():
             sharpe_ratio=0.0,
             profit_factor=0.0,
         )
+
+
+@router.get("/review/daily/latest", response_model=Optional[ReviewReportSchema])
+async def get_daily_review():
+    """取得最新每日覆盤報告。"""
+    try:
+        from ..database.helpers import get_latest_review
+        return await get_latest_review("daily")
+    except Exception as e:
+        logger.error(f"get_daily_review error: {e}")
+        return None
+
+
+@router.get("/review/weekly/latest", response_model=Optional[ReviewReportSchema])
+async def get_weekly_review():
+    """取得最新週覆盤報告。"""
+    try:
+        from ..database.helpers import get_latest_review
+        return await get_latest_review("weekly")
+    except Exception as e:
+        logger.error(f"get_weekly_review error: {e}")
+        return None
 
 
 @router.post("/backtest/run", response_model=BacktestResponse)
