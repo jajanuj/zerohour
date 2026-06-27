@@ -181,6 +181,22 @@ def generate_signal():
         open_positions = sync_run(get_open_positions())
         has_position = any(p["symbol"] == SYMBOL for p in open_positions)
 
+        from .alerts.discord import get_alerter
+        alerter = get_alerter()
+
+        # 推播訊號（BUY/SELL 才發）
+        if action in ("BUY", "SELL"):
+            sync_run(alerter.signal_alert(
+                action=action,
+                symbol=SYMBOL,
+                confidence=float(time_diff.confidence),
+                s1_state=trend.state.value,
+                s2_direction=time_diff.direction.value,
+                position_pct=float(combined.suggested_position_pct),
+                stop_loss_pct=float(combined.stop_loss_pct),
+                reason=combined.reason,
+            ))
+
         if action == "BUY" and not has_position:
             tw_df = tw_fetcher.get_historical(SYMBOL, period="5d")
             if not tw_df.empty:
@@ -195,6 +211,13 @@ def generate_signal():
                     fill_price=fill_price,
                     stop_loss_price=round(stop_loss, 2),
                 ))
+                sync_run(alerter.trade_executed(
+                    direction="BUY",
+                    symbol=SYMBOL,
+                    quantity=round(quantity, 0),
+                    fill_price=fill_price,
+                    stop_loss_price=round(stop_loss, 2),
+                ))
                 logger.info(f"Paper BUY: {quantity:.0f} {SYMBOL} @ {fill_price}")
 
         elif action == "SELL" and has_position:
@@ -204,6 +227,12 @@ def generate_signal():
                 sync_run(close_position(
                     signal_id=signal_id,
                     symbol=SYMBOL,
+                    fill_price=fill_price,
+                ))
+                sync_run(alerter.trade_executed(
+                    direction="SELL",
+                    symbol=SYMBOL,
+                    quantity=has_position and open_positions[0]["quantity"] or 0,
                     fill_price=fill_price,
                 ))
                 logger.info(f"Paper SELL: {SYMBOL} @ {fill_price}")
@@ -279,6 +308,21 @@ def update_positions():
             cash=cash,
             daily_pnl=daily_pnl,
         ))
+
+        # 每日收盤摘要推播
+        try:
+            from .alerts.discord import get_alerter
+            alerter = get_alerter()
+            fresh_positions = sync_run(get_open_positions())
+            total_return_pct = (total_equity - INITIAL_CAPITAL) / INITIAL_CAPITAL
+            sync_run(alerter.daily_summary(
+                total_equity=total_equity,
+                daily_pnl=daily_pnl,
+                total_return_pct=total_return_pct,
+                positions=fresh_positions,
+            ))
+        except Exception as e:
+            logger.warning(f"Discord daily_summary failed: {e}")
 
         logger.info(f"Positions updated. equity={total_equity:.0f} cash={cash:.0f}")
         return {"status": "ok", "total_equity": total_equity, "positions": len(positions)}
