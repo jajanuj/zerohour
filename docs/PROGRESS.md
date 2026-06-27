@@ -1,6 +1,6 @@
 # ZeroHour — 開發進度追蹤
 
-> 最後更新：2026-06-27
+> 最後更新：2026-06-27（第二階段完成）
 
 ---
 
@@ -116,26 +116,42 @@
 
 ---
 
-## ❌ 尚未實作（第一階段剩餘）
+## ✅ P5 完成（2026-06-27）：GitHub CI/CD
 
-1. **P5 GitHub Secrets / CI/CD**：需要老闆操作（見下方說明）
+- FLY_API_TOKEN 設定至 GitHub Secrets
+- `.github/workflows/deploy.yml` 加入 master 分支觸發
+- push master 自動部署至 Fly.io
 
 ---
 
-## ❌ 尚未實作（第二階段 — 等第一階段穩定後）
+## ✅ 第二階段完成（2026-06-27）
 
-> 計劃文件 §13，目前只有空目錄和 DB 表格定義
+### Agent 系統
 
-| 功能 | 說明 |
+| Agent | 檔案 | 排程 | 說明 |
+|-------|------|------|------|
+| Market Context | `src/agents/market_context_agent.py` | 04:10 每日 | Gemini 解讀美股背景對台股影響 |
+| 黑天鵝偵測 | `src/agents/black_swan_agent.py` | 04:07 每日 | VIX/NASDAQ 純量化，無 LLM |
+| 基本面 Agent | `src/agents/stock_selection/fundamental_agent.py` | 週日 20:00 | yfinance + Gemini |
+| 催化劑 Agent | `src/agents/stock_selection/catalyst_agent.py` | 週日 20:00 | 財報日期 + 新聞 + Gemini |
+| 供應鏈 Agent | `src/agents/stock_selection/supply_chain_agent.py` | 週日 20:00 | 靜態知識庫 + Gemini |
+| 技術面 Agent | `src/agents/stock_selection/technical_agent.py` | 週日 20:00 | RSI/MACD/MA，純量化 |
+| 選股 Pipeline | `src/agents/stock_selection/pipeline.py` | 週日 20:00 | 整合 4 Agent → Watchlist |
+
+### 股票池
+15 支台灣科技供應鏈股（2330.TW、2454.TW、2317.TW 等），分數 ≥ 60 進入 Watchlist，最多 8 支。
+
+### 新 API 端點
+| 端點 | 說明 |
 |------|------|
-| Market Context Agent | 分析整體市場環境（`src/agents/market_context_agent.py`，未建立）|
-| 黑天鵝偵測 Agent | 偵測尾部風險事件（`src/agents/black_swan_agent.py`，未建立）|
-| 基本面選股 Agent | 護城河 + 成長性分析 |
-| 催化劑選股 Agent | 業績 / 新聞觸發因素 |
-| 供應鏈選股 Agent | 台灣供應鏈相關性 |
-| 技術面選股 Agent | 型態確認 |
-| 選股整合 Pipeline | 輸出最終 Watchlist |
-| Watchlist 管理 | DB 寫入 + Dashboard 顯示 |
+| `GET /api/v1/agents/market-context/latest` | 最新市場背景分析 |
+| `GET /api/v1/agents/black-swan/status` | 近 7 天黑天鵝狀態 |
+| `GET /api/v1/watchlist` | 目前 Watchlist |
+
+### Dashboard 新區塊
+- 市場背景卡片（驅動力 / 台股關聯度 / 信心修正值）
+- 黑天鵝偵測卡片（NONE / WATCH / ALERT / CRITICAL）
+- Watchlist 表格（代號 / 分數 / 推薦 / 論點 / 進場條件）
 
 ---
 
