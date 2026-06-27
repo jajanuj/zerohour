@@ -12,6 +12,9 @@ from .schemas import (
     OrderResponse,
     PerformanceResponse,
     ReviewReportSchema,
+    MarketContextSchema,
+    BlackSwanSchema,
+    WatchlistItemSchema,
     BacktestRequest,
     BacktestResponse,
 )
@@ -190,6 +193,39 @@ async def get_weekly_review():
     except Exception as e:
         logger.error(f"get_weekly_review error: {e}")
         return None
+
+
+@router.get("/agents/market-context/latest", response_model=Optional[MarketContextSchema])
+async def get_market_context():
+    """取得最新市場背景 Agent 分析結果。"""
+    try:
+        from ..database.helpers import get_latest_market_context
+        return await get_latest_market_context()
+    except Exception as e:
+        logger.error(f"get_market_context error: {e}")
+        return None
+
+
+@router.get("/agents/black-swan/status", response_model=Optional[BlackSwanSchema])
+async def get_black_swan_status():
+    """取得最近 7 天黑天鵝偵測狀態（無警報回傳 null）。"""
+    try:
+        from ..database.helpers import get_latest_black_swan
+        return await get_latest_black_swan()
+    except Exception as e:
+        logger.error(f"get_black_swan_status error: {e}")
+        return None
+
+
+@router.get("/watchlist", response_model=list[WatchlistItemSchema])
+async def get_watchlist():
+    """取得目前 Watchlist（選股 Pipeline 輸出）。"""
+    try:
+        from ..database.helpers import get_watchlist
+        return await get_watchlist()
+    except Exception as e:
+        logger.error(f"get_watchlist error: {e}")
+        return []
 
 
 @router.post("/backtest/run", response_model=BacktestResponse)

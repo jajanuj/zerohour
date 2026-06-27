@@ -55,6 +55,16 @@ celery_app.conf.beat_schedule = {
         "task": "src.tasks.generate_signal",
         "schedule": crontab(hour=4, minute=5),
     },
+    # 04:07 黑天鵝偵測（美股收盤後立即檢查）
+    "check-black-swan": {
+        "task": "src.tasks.check_black_swan",
+        "schedule": crontab(hour=4, minute=7),
+    },
+    # 04:10 市場背景 Agent
+    "run-market-context": {
+        "task": "src.tasks.run_market_context",
+        "schedule": crontab(hour=4, minute=10),
+    },
     # 13:35 台股收盤後更新持倉損益 + 績效快照
     "update-positions": {
         "task": "src.tasks.update_positions",
@@ -69,6 +79,11 @@ celery_app.conf.beat_schedule = {
     "weekly-review": {
         "task": "src.tasks.run_weekly_review",
         "schedule": crontab(hour=14, minute=0, day_of_week=5),
+    },
+    # 週日 20:00 選股掃描
+    "stock-selection": {
+        "task": "src.tasks.run_stock_selection",
+        "schedule": crontab(hour=20, minute=0, day_of_week=0),
     },
     # 22:00 月底 200MA 趨勢檢查
     "monthly-trend-check": {
@@ -638,6 +653,155 @@ def check_monthly_trend():
 
     except Exception as e:
         logger.error(f"check_monthly_trend failed: {e}")
+        return {"status": "error", "reason": str(e)}
+
+
+# ── 任務：黑天鵝偵測 ─────────────────────────────────────────────────
+
+@celery_app.task(name="src.tasks.check_black_swan")
+def check_black_swan():
+    """04:07 黑天鵝偵測 — 純量化，不呼叫 LLM。"""
+    from .agents.black_swan_agent import detect_black_swan, fetch_vix, BlackSwanSeverity
+    from .database import sync_run
+    from .database.helpers import save_black_swan_alert
+    from .data.fetcher import USMarketFetcher
+
+    try:
+        fetcher = USMarketFetcher()
+        us_data = fetcher.get_all_signals_data()
+        nasdaq_chg = us_data.get("nasdaq", {}).get("change_pct", 0.0) or 0.0
+        sox_chg = us_data.get("sox", {}).get("change_pct", 0.0) or 0.0
+        vix = fetch_vix()
+
+        signal = detect_black_swan(
+            vix=vix,
+            nasdaq_change_pct=nasdaq_chg,
+            sox_change_pct=sox_chg,
+        )
+
+        if signal.severity != BlackSwanSeverity.NONE:
+            sync_run(save_black_swan_alert(
+                severity=signal.severity.value,
+                triggers=signal.triggers,
+                action_taken=signal.recommended_action,
+            ))
+            logger.warning(f"Black Swan detected: {signal.severity.value} | {signal.triggers}")
+
+            # Discord 警告
+            if signal.severity in (BlackSwanSeverity.ALERT, BlackSwanSeverity.CRITICAL):
+                try:
+                    from .alerts.discord import get_alerter
+                    sync_run(get_alerter().system_error(
+                        task_name=f"黑天鵝偵測 [{signal.severity.value}]",
+                        error="\n".join(signal.triggers),
+                    ))
+                except Exception as e:
+                    logger.warning(f"Discord black swan alert failed: {e}")
+
+        logger.info(f"Black swan check: {signal.severity.value} | VIX={vix:.1f} NASDAQ={nasdaq_chg:+.1f}%")
+        return {
+            "severity": signal.severity.value,
+            "vix": vix,
+            "triggers": signal.triggers,
+        }
+
+    except Exception as e:
+        logger.error(f"check_black_swan failed: {e}", exc_info=True)
+        return {"status": "error", "reason": str(e)}
+
+
+# ── 任務：市場背景 Agent ───────────────────────────────────────────────
+
+@celery_app.task(name="src.tasks.run_market_context")
+def run_market_context():
+    """04:10 市場背景 Agent — 解讀美股收盤背景對台股的影響。"""
+    from .agents.market_context_agent import run_market_context_agent
+    from .database import sync_run
+    from .database.helpers import save_market_context
+    from .data.fetcher import USMarketFetcher
+
+    try:
+        fetcher = USMarketFetcher()
+        us_data = fetcher.get_all_signals_data()
+        nasdaq_chg = us_data.get("nasdaq", {}).get("change_pct", 0.0) or 0.0
+        sp500_chg  = us_data.get("sp500",  {}).get("change_pct", 0.0) or 0.0
+        sox_chg    = us_data.get("sox",    {}).get("change_pct", 0.0) or 0.0
+
+        result = sync_run(run_market_context_agent(
+            nasdaq_change_pct=nasdaq_chg,
+            sp500_change_pct=sp500_chg,
+            sox_change_pct=sox_chg,
+        ))
+
+        today = date.today()
+        sync_run(save_market_context(today, result))
+
+        logger.info(
+            f"Market context: {result.get('taiwan_relevance')} | "
+            f"modifier={result.get('confidence_modifier', 0):+.2f} | "
+            f"{result.get('context_summary', '')[:60]}"
+        )
+        return {
+            "status": "ok",
+            "taiwan_relevance": result.get("taiwan_relevance"),
+            "confidence_modifier": result.get("confidence_modifier", 0),
+        }
+
+    except Exception as e:
+        logger.error(f"run_market_context failed: {e}", exc_info=True)
+        return {"status": "error", "reason": str(e)}
+
+
+# ── 任務：選股 Pipeline（週日 20:00）──────────────────────────────────
+
+@celery_app.task(name="src.tasks.run_stock_selection")
+def run_stock_selection():
+    """週日 20:00 執行選股 Pipeline，產出 Watchlist。"""
+    from .agents.stock_selection.pipeline import run_stock_selection_pipeline
+    from .database import sync_run
+    from .database.helpers import save_watchlist
+
+    try:
+        entries = sync_run(run_stock_selection_pipeline())
+
+        if not entries:
+            logger.info("Stock selection: no stocks passed threshold")
+            return {"status": "ok", "count": 0}
+
+        items = [
+            {
+                "symbol": e.symbol,
+                "overall_score": e.overall_score,
+                "recommendation": e.recommendation,
+                "thesis": e.thesis,
+                "risks": e.risks,
+                "entry_condition": e.entry_condition,
+                "agent_results": e.agent_results,
+            }
+            for e in entries
+        ]
+        sync_run(save_watchlist(items))
+
+        # Discord 週報
+        try:
+            from .alerts.discord import get_alerter
+            top_symbols = ", ".join(e.symbol for e in entries[:5])
+            sync_run(get_alerter().system_error(
+                task_name="選股 Pipeline 完成",
+                error=f"Watchlist 更新：{len(entries)} 支股票\n前五名：{top_symbols}",
+            ))
+        except Exception as e:
+            logger.warning(f"Discord watchlist notify failed: {e}")
+
+        logger.info(f"Stock selection done: {len(entries)} stocks added to watchlist")
+        return {
+            "status": "ok",
+            "count": len(entries),
+            "symbols": [e.symbol for e in entries],
+        }
+
+    except Exception as e:
+        logger.error(f"run_stock_selection failed: {e}", exc_info=True)
         return {"status": "error", "reason": str(e)}
 
 

@@ -13,6 +13,10 @@ from .models import (
     PositionSnapshot,
     PerformanceSnapshot,
     ReviewReport,
+    AgentMarketContext,
+    BlackSwanAlertRecord,
+    WatchlistItem,
+    AgentRunLog,
 )
 
 logger = logging.getLogger(__name__)
@@ -540,6 +544,171 @@ async def get_latest_review(review_type: str) -> dict | None:
             "stability_score": float(row.stability_score or 0),
             "net_pnl": float(row.net_pnl or 0),
         }
+
+
+# ── Phase 2 Agent helpers ─────────────────────────────────────────────
+
+
+async def save_market_context(context_date: date, result: dict) -> None:
+    """Upsert AgentMarketContext for the given date."""
+    async with get_session() as session:
+        existing = await session.execute(
+            select(AgentMarketContext).where(AgentMarketContext.context_date == context_date)
+        )
+        row = existing.scalars().first()
+        if row:
+            row.market_driver = result.get("market_driver")
+            row.taiwan_relevance = result.get("taiwan_relevance")
+            row.relevance_reason = result.get("relevance_reason")
+            row.confidence_modifier = result.get("confidence_modifier", 0)
+            row.key_risks = result.get("key_risks", [])
+            row.context_summary = result.get("context_summary")
+        else:
+            session.add(AgentMarketContext(
+                context_date=context_date,
+                market_driver=result.get("market_driver"),
+                taiwan_relevance=result.get("taiwan_relevance"),
+                relevance_reason=result.get("relevance_reason"),
+                confidence_modifier=result.get("confidence_modifier", 0),
+                key_risks=result.get("key_risks", []),
+                context_summary=result.get("context_summary"),
+            ))
+
+
+async def get_latest_market_context() -> dict | None:
+    """Return latest AgentMarketContext as dict."""
+    async with get_session() as session:
+        result = await session.execute(
+            select(AgentMarketContext).order_by(desc(AgentMarketContext.context_date)).limit(1)
+        )
+        row = result.scalars().first()
+        if not row:
+            return None
+        return {
+            "context_date": row.context_date.isoformat(),
+            "market_driver": row.market_driver or "",
+            "taiwan_relevance": row.taiwan_relevance or "MEDIUM",
+            "relevance_reason": row.relevance_reason or "",
+            "confidence_modifier": float(row.confidence_modifier or 0),
+            "key_risks": row.key_risks or [],
+            "context_summary": row.context_summary or "",
+        }
+
+
+async def save_black_swan_alert(
+    severity: str,
+    triggers: list[str],
+    action_taken: str,
+) -> int:
+    """Save BlackSwanAlertRecord if severity > NONE. Returns record id."""
+    async with get_session() as session:
+        record = BlackSwanAlertRecord(
+            detected_at=datetime.utcnow(),
+            severity=severity,
+            triggers=triggers,
+            action_taken=action_taken,
+        )
+        session.add(record)
+        await session.flush()
+        return record.id
+
+
+async def get_latest_black_swan() -> dict | None:
+    """Return the latest BlackSwanAlertRecord within last 7 days, or None."""
+    cutoff = datetime.utcnow().replace(hour=0, minute=0, second=0) - timedelta(days=7)
+    async with get_session() as session:
+        result = await session.execute(
+            select(BlackSwanAlertRecord)
+            .where(BlackSwanAlertRecord.detected_at >= cutoff)
+            .order_by(desc(BlackSwanAlertRecord.detected_at))
+            .limit(1)
+        )
+        row = result.scalars().first()
+        if not row:
+            return None
+        return {
+            "detected_at": row.detected_at.isoformat(),
+            "severity": row.severity,
+            "triggers": row.triggers or [],
+            "action_taken": row.action_taken or "",
+        }
+
+
+async def save_watchlist(items: list[dict]) -> None:
+    """
+    Replace active watchlist with new items.
+    Deactivate old items, insert new ones.
+    """
+    now = datetime.utcnow()
+    expires = now + timedelta(days=8)  # 下次掃描前有效（7天+緩衝）
+    async with get_session() as session:
+        # Mark all existing active items as expired
+        result = await session.execute(
+            select(WatchlistItem).where(WatchlistItem.status == "active")
+        )
+        for old in result.scalars().all():
+            old.status = "expired"
+        # Insert new items
+        for item in items:
+            session.add(WatchlistItem(
+                symbol=item["symbol"],
+                overall_score=item["overall_score"],
+                recommendation=item["recommendation"],
+                thesis=item["thesis"],
+                risks=item.get("risks", []),
+                entry_condition=item.get("entry_condition", ""),
+                agent_results=item.get("agent_results", {}),
+                status="active",
+                generated_at=now,
+                expires_at=expires,
+            ))
+
+
+async def get_watchlist() -> list[dict]:
+    """Return active watchlist items sorted by score desc."""
+    async with get_session() as session:
+        result = await session.execute(
+            select(WatchlistItem)
+            .where(WatchlistItem.status == "active")
+            .order_by(desc(WatchlistItem.overall_score))
+        )
+        rows = result.scalars().all()
+        return [
+            {
+                "symbol": r.symbol,
+                "overall_score": float(r.overall_score or 0),
+                "recommendation": r.recommendation or "",
+                "thesis": r.thesis or "",
+                "risks": r.risks or [],
+                "entry_condition": r.entry_condition or "",
+                "agent_results": r.agent_results or {},
+                "generated_at": r.generated_at.isoformat() if r.generated_at else "",
+                "expires_at": r.expires_at.isoformat() if r.expires_at else "",
+            }
+            for r in rows
+        ]
+
+
+async def log_agent_run(
+    run_type: str,
+    symbol: str | None,
+    tokens_used: int,
+    success: bool,
+    duration_ms: int = 0,
+    error_message: str | None = None,
+) -> None:
+    """Log an agent run with token usage."""
+    cost = tokens_used * 0.00000015  # gemini-2.5-flash 估算成本
+    async with get_session() as session:
+        session.add(AgentRunLog(
+            run_type=run_type,
+            symbol=symbol,
+            tokens_used=tokens_used,
+            cost_usd=cost,
+            duration_ms=duration_ms,
+            success=success,
+            error_message=error_message,
+        ))
 
 
 async def get_latest_performance() -> dict | None:

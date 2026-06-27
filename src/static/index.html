@@ -333,8 +333,23 @@
         </div>
         <div class="status-row">
           <div class="status-dot dot-green"></div>
+          <span class="status-name" style="width:60px">04:07</span>
+          <span class="status-desc">黑天鵝偵測（VIX + NASDAQ）</span>
+        </div>
+        <div class="status-row">
+          <div class="status-dot dot-green"></div>
+          <span class="status-name" style="width:60px">04:10</span>
+          <span class="status-desc">市場背景 Agent（Gemini）</span>
+        </div>
+        <div class="status-row">
+          <div class="status-dot dot-green"></div>
           <span class="status-name" style="width:60px">週五 14:00</span>
           <span class="status-desc">週覆盤（Gemini AI 分析）</span>
+        </div>
+        <div class="status-row">
+          <div class="status-dot dot-green"></div>
+          <span class="status-name" style="width:60px">週日 20:00</span>
+          <span class="status-desc">選股 Pipeline（4 Agent）</span>
         </div>
         <div class="status-row">
           <div class="status-dot dot-green"></div>
@@ -346,6 +361,56 @@
   </div>
 
   <div class="divider"></div>
+
+  <!-- Market Context + Black Swan -->
+  <div class="section-title">市場背景分析</div>
+  <div class="grid2" style="margin-bottom:20px">
+    <div class="card">
+      <div class="card-header">
+        <span class="card-title"><i class="ti ti-world" aria-hidden="true"></i>市場背景 Agent</span>
+        <span id="ctx-relevance" class="badge badge-gray">載入中</span>
+      </div>
+      <div class="card-body">
+        <div class="sig-label">主要驅動力</div>
+        <div id="ctx-driver" style="font-size:13px;color:var(--text);margin-bottom:10px;line-height:1.6">—</div>
+        <div class="grid2" style="gap:12px">
+          <div>
+            <div class="sig-label">台股關聯度</div>
+            <div class="sig-value neut" id="ctx-relevance-val">—</div>
+            <div class="sig-sub" id="ctx-reason">—</div>
+          </div>
+          <div>
+            <div class="sig-label">信心修正</div>
+            <div class="sig-value neut" id="ctx-modifier">—</div>
+            <div class="sig-sub">−0.20 ～ +0.20</div>
+          </div>
+        </div>
+      </div>
+    </div>
+    <div class="card">
+      <div class="card-header">
+        <span class="card-title"><i class="ti ti-alert-hexagon" aria-hidden="true"></i>黑天鵝偵測</span>
+        <span id="bs-severity" class="badge badge-ok">NONE</span>
+      </div>
+      <div class="card-body">
+        <div class="sig-label">近 7 天偵測結果</div>
+        <div id="bs-status" style="font-size:22px;font-weight:700;color:var(--green);margin:4px 0 8px">正常</div>
+        <div id="bs-triggers" style="font-size:12px;color:var(--text-muted);line-height:1.7">系統運作正常，無黑天鵝事件</div>
+      </div>
+    </div>
+  </div>
+
+  <!-- Watchlist -->
+  <div class="section-title">選股觀察名單</div>
+  <div class="card" style="margin-bottom:20px">
+    <div class="card-header">
+      <span class="card-title"><i class="ti ti-list-check" aria-hidden="true"></i>Watchlist</span>
+      <span id="watchlist-badge" class="badge badge-gray">載入中</span>
+    </div>
+    <div class="card-body" id="watchlist-area">
+      <div class="empty-state"><i class="ti ti-clock" aria-hidden="true"></i>每週日 20:00 自動更新，選股 Pipeline 尚未執行</div>
+    </div>
+  </div>
 
   <!-- Weekly Review -->
   <div class="section-title">週覆盤報告</div>
@@ -546,6 +611,103 @@ async function loadPositions() {
   }
 }
 
+async function loadMarketContext() {
+  try {
+    const r = await fetch(API + '/api/v1/agents/market-context/latest');
+    if (!r.ok) return;
+    const d = await r.json();
+    if (!d) return;
+
+    document.getElementById('ctx-driver').textContent = d.market_driver || '—';
+    const relMap = { HIGH: { cls: 'badge-buy', label: 'HIGH 高度相關' }, MEDIUM: { cls: 'badge-hold', label: 'MEDIUM 中度相關' }, LOW: { cls: 'badge-gray', label: 'LOW 低度相關' } };
+    const rel = relMap[d.taiwan_relevance] || relMap.MEDIUM;
+    document.getElementById('ctx-relevance').textContent = rel.label;
+    document.getElementById('ctx-relevance').className = 'badge ' + rel.cls;
+    document.getElementById('ctx-relevance-val').textContent = d.taiwan_relevance || '—';
+    document.getElementById('ctx-reason').textContent = d.relevance_reason || '—';
+    const mod = d.confidence_modifier;
+    const modEl = document.getElementById('ctx-modifier');
+    modEl.textContent = mod != null ? (mod >= 0 ? '+' : '') + mod.toFixed(2) : '—';
+    modEl.className = 'sig-value ' + (mod > 0.05 ? 'bull' : mod < -0.05 ? 'bear' : 'neut');
+  } catch(e) {
+    console.warn('market context load failed', e);
+  }
+}
+
+async function loadBlackSwan() {
+  try {
+    const r = await fetch(API + '/api/v1/agents/black-swan/status');
+    if (!r.ok) return;
+    const d = await r.json();
+
+    const sevEl = document.getElementById('bs-severity');
+    const statEl = document.getElementById('bs-status');
+    const trigEl = document.getElementById('bs-triggers');
+
+    if (!d) {
+      sevEl.textContent = 'NONE'; sevEl.className = 'badge badge-ok';
+      statEl.textContent = '正常'; statEl.style.color = 'var(--green)';
+      trigEl.textContent = '近 7 天無黑天鵝事件';
+      return;
+    }
+    const sevStyle = { NONE: ['badge-ok','正常','var(--green)'], WATCH: ['badge-hold','觀察','var(--amber)'], ALERT: ['badge-sell','警告','var(--red)'], CRITICAL: ['badge-sell','嚴重','var(--red)'] };
+    const [cls, label, color] = sevStyle[d.severity] || sevStyle.NONE;
+    sevEl.textContent = d.severity; sevEl.className = 'badge ' + cls;
+    statEl.textContent = label; statEl.style.color = color;
+    trigEl.innerHTML = (d.triggers || []).map(t => `• ${t}`).join('<br>') || '無觸發條件';
+  } catch(e) {
+    console.warn('black swan load failed', e);
+  }
+}
+
+async function loadWatchlist() {
+  const area = document.getElementById('watchlist-area');
+  const badge = document.getElementById('watchlist-badge');
+  try {
+    const r = await fetch(API + '/api/v1/watchlist');
+    if (!r.ok) throw new Error(r.statusText);
+    const items = await r.json();
+
+    badge.textContent = items.length + ' 支股票';
+    badge.className = 'badge ' + (items.length > 0 ? 'badge-ok' : 'badge-gray');
+
+    if (items.length === 0) {
+      area.innerHTML = `<div class="empty-state"><i class="ti ti-clock" aria-hidden="true"></i>每週日 20:00 自動更新，目前無 Watchlist</div>`;
+      return;
+    }
+
+    const recMap = { STRONG_BUY: ['badge-buy','強力買進'], BUY: ['badge-buy','買進'], WATCH: ['badge-hold','觀察'] };
+    area.innerHTML = `
+      <table class="pos-table">
+        <thead><tr>
+          <th>代號</th><th class="right">綜合分數</th><th>推薦</th>
+          <th>論點</th><th>進場條件</th>
+        </tr></thead>
+        <tbody>
+          ${items.map(w => {
+            const [cls, label] = recMap[w.recommendation] || ['badge-gray', w.recommendation];
+            const ar = w.agent_results || {};
+            const techScore = ar.technical ? ar.technical.score : '—';
+            const fundScore = ar.fundamental ? ar.fundamental.score : '—';
+            return `<tr>
+              <td><strong>${w.symbol}</strong>
+                <div style="font-size:11px;color:var(--text-muted)">技術 ${techScore} / 基本面 ${fundScore}</div>
+              </td>
+              <td class="right"><strong>${w.overall_score}</strong></td>
+              <td><span class="badge ${cls}">${label}</span></td>
+              <td style="font-size:12px;color:var(--text-muted);max-width:220px">${w.thesis || '—'}</td>
+              <td style="font-size:12px;color:var(--text-muted)">${w.entry_condition || '—'}</td>
+            </tr>`;
+          }).join('')}
+        </tbody>
+      </table>
+      <div style="font-size:11px;color:var(--text-light);margin-top:8px;text-align:right">最後更新：${items[0]?.generated_at?.slice(0,10) || '—'}</div>`;
+  } catch(e) {
+    area.innerHTML = `<div class="empty-state">載入失敗：${e.message}</div>`;
+    badge.textContent = '錯誤'; badge.className = 'badge badge-sell';
+  }
+}
+
 async function loadWeeklyReview() {
   try {
     const r = await fetch(API + '/api/v1/review/weekly/latest');
@@ -586,7 +748,7 @@ async function refreshAll() {
   btn.classList.add('loading');
   btn.disabled = true;
   document.getElementById('last-update-time').textContent = '更新中...';
-  await Promise.all([loadSignals(), loadPerformance(), loadPositions(), loadWeeklyReview()]);
+  await Promise.all([loadSignals(), loadPerformance(), loadPositions(), loadWeeklyReview(), loadMarketContext(), loadBlackSwan(), loadWatchlist()]);
   const now = new Date();
   document.getElementById('last-update-time').textContent = now.toLocaleTimeString('zh-TW');
   btn.classList.remove('loading');

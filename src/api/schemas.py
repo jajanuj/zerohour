@@ -86,6 +86,35 @@ class PerformanceResponse(BaseModel):
     profit_factor: float
 
 
+class MarketContextSchema(BaseModel):
+    context_date: str
+    market_driver: str
+    taiwan_relevance: str
+    relevance_reason: str
+    confidence_modifier: float
+    key_risks: list[str] = []
+    context_summary: str
+
+
+class BlackSwanSchema(BaseModel):
+    detected_at: str
+    severity: str
+    triggers: list[str] = []
+    action_taken: str
+
+
+class WatchlistItemSchema(BaseModel):
+    symbol: str
+    overall_score: float
+    recommendation: str
+    thesis: str
+    risks: list[str] = []
+    entry_condition: str = ""
+    agent_results: dict = {}
+    generated_at: str = ""
+    expires_at: str = ""
+
+
 class BacktestRequest(BaseModel):
     strategy: str = Field(default="S3")
     symbol: str = Field(default="QQQ")
