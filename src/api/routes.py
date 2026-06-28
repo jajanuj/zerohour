@@ -317,33 +317,30 @@ async def debug_celery():
     import asyncio as _aio
     from ..tasks import celery_app
 
-    def _inspect():
-        insp = celery_app.control.inspect(timeout=3.0)
-        stats   = insp.stats()   or {}
-        active  = insp.active()  or {}
-        reserved = insp.reserved() or {}
-        return {
-            "workers_online": list(stats.keys()),
-            "worker_count": len(stats),
-            "active_tasks": {w: len(t) for w, t in active.items()},
-            "reserved_tasks": {w: len(t) for w, t in reserved.items()},
-        }
+    def _ping():
+        # ping 是單次廣播，比 stats/active/reserved 三連呼快 3 倍
+        pings = celery_app.control.ping(timeout=2.0) or []
+        workers = []
+        for p in pings:
+            workers.extend(p.keys())
+        return {"workers_online": workers, "worker_count": len(workers)}
 
     try:
         loop = _aio.get_running_loop()
         result = await _aio.wait_for(
-            loop.run_in_executor(None, _inspect),
-            timeout=5.0,
+            loop.run_in_executor(None, _ping),
+            timeout=4.0,
         )
-        if result["worker_count"] == 0:
-            result["diagnosis"] = "⚠️ 沒有 Worker 在線！請確認 Fly.io Worker 機器是否啟動（flyctl status / flyctl scale count worker=1）"
-        else:
-            result["diagnosis"] = f"✅ {result['worker_count']} 個 Worker 在線"
+        result["diagnosis"] = (
+            f"✅ {result['worker_count']} 個 Worker 在線"
+            if result["worker_count"] > 0
+            else "⚠️ 沒有 Worker 回應 ping — 請執行 flyctl machine start <worker-id>"
+        )
         return result
     except _aio.TimeoutError:
         return {
             "error": "timeout",
-            "diagnosis": "⚠️ Celery inspect 超時 (5s) — Worker 未在線或 Redis 無法從 Web 連接",
+            "diagnosis": "⚠️ ping 超時 (4s)，Worker 未在線或 Redis pub/sub 異常",
         }
     except Exception as e:
         return {"error": str(e), "diagnosis": "⚠️ 發生例外"}
