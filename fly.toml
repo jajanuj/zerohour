@@ -5,9 +5,8 @@ primary_region = "nrt"
   dockerfile = "docker/Dockerfile"
 
 [processes]
-  web       = "uvicorn src.main:app --host 0.0.0.0 --port 8080"
-  worker    = "celery -A src.tasks worker --loglevel=info -Q celery,signals,orders,alerts -c 2"
-  scheduler = "celery -A src.tasks beat   --loglevel=info"
+  web    = "uvicorn src.main:app --host 0.0.0.0 --port 8080"
+  worker = "celery -A src.tasks worker --loglevel=info -Q celery,signals,orders,alerts --pool=solo -B"
 
 [[services]]
   internal_port = 8080
@@ -38,8 +37,3 @@ primary_region = "nrt"
   size = "shared-cpu-1x"
   memory = "256mb"
   processes = ["worker"]
-
-[[ vm ]]
-  size = "shared-cpu-1x"
-  memory = "256mb"
-  processes = ["scheduler"]
