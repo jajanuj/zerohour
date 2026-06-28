@@ -317,31 +317,42 @@ async def debug_celery():
     import asyncio as _aio
     from ..tasks import celery_app
 
-    def _ping():
-        # ping 是單次廣播，比 stats/active/reserved 三連呼快 3 倍
-        pings = celery_app.control.ping(timeout=2.0) or []
-        workers = []
-        for p in pings:
-            workers.extend(p.keys())
-        return {"workers_online": workers, "worker_count": len(workers)}
+    # Upstash Redis 不支援 persistent pub/sub，Celery ping/inspect 永遠 timeout。
+    # 改用 Redis List 操作（llen）直接確認佇列狀態，這與 Upstash 完全相容。
+    def _check_redis():
+        import redis as _redis
+        import ssl as _ssl
+        s = settings
+        url = s.redis_url
+        if url.startswith("rediss://") and "ssl_cert_reqs" not in url:
+            sep = "&" if "?" in url else "?"
+            url = f"{url}{sep}ssl_cert_reqs=CERT_NONE"
+        r = _redis.from_url(url, ssl_cert_reqs=_ssl.CERT_NONE, decode_responses=True)
+        r.ping()
+        queues = {q: r.llen(q) for q in ["celery", "signals", "orders", "alerts"]}
+        return {
+            "redis_ok": True,
+            "queue_pending": queues,
+            "total_pending": sum(queues.values()),
+        }
 
     try:
         loop = _aio.get_running_loop()
         result = await _aio.wait_for(
-            loop.run_in_executor(None, _ping),
-            timeout=4.0,
+            loop.run_in_executor(None, _check_redis),
+            timeout=5.0,
         )
+        pending = result["total_pending"]
         result["diagnosis"] = (
-            f"✅ {result['worker_count']} 個 Worker 在線"
-            if result["worker_count"] > 0
-            else "⚠️ 沒有 Worker 回應 ping — 請執行 flyctl machine start <worker-id>"
+            f"✅ Redis 正常，佇列無積壓（Worker 應已處理完畢）" if pending == 0
+            else f"⚠️ Redis 正常，佇列尚有 {pending} 個任務待處理"
         )
+        result["note"] = "Upstash 不支援 pub/sub，Worker 線上狀態請以 flyctl status 確認"
         return result
     except _aio.TimeoutError:
-        return {
-            "error": "timeout",
-            "diagnosis": "⚠️ ping 超時 (4s)，Worker 未在線或 Redis pub/sub 異常",
-        }
+        return {"error": "timeout", "diagnosis": "⚠️ Redis 連線超時（5s）"}
+    except Exception as e:
+        return {"error": str(e), "diagnosis": "⚠️ Redis 連線失敗"}
     except Exception as e:
         return {"error": str(e), "diagnosis": "⚠️ 發生例外"}
 
