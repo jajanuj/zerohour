@@ -30,7 +30,9 @@ jobs:
 
       - name: Ensure worker is running
         # Fly.io does not auto-start non-HTTP process groups after a rolling deploy.
-        # Beat is now embedded in the worker (--pool=solo -B), no separate scheduler needed.
+        # Scale to 0 then 1 to force restart any stopped/OOM-killed machine.
         run: |
+          flyctl scale count worker=0 -a zerohour-trading-engine --yes
+          sleep 5
           flyctl scale count worker=1 -a zerohour-trading-engine --yes
-          echo "✅ worker scale count set to 1"
+          echo "✅ worker restarted"
