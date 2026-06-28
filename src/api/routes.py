@@ -583,16 +583,18 @@ async def get_portfolio():
 
     def _fetch_price(sym: str):
         try:
+            import math
             import yfinance as _yf
             tkr = _yf.Ticker(sym)
             try:
-                live = float(tkr.fast_info.last_price or 0)
+                raw = tkr.fast_info.last_price
+                live = float(raw) if raw is not None else 0.0
             except Exception:
                 live = 0.0
-            if live <= 0:
+            if live <= 0 or math.isnan(live):
                 hist = tkr.history(period="3d").dropna(subset=["Close"])
                 live = float(hist.iloc[-1]["Close"]) if not hist.empty else 0.0
-            return sym, round(live, 4)
+            return sym, round(live, 4) if live > 0 and not math.isnan(live) else None
         except Exception as e:
             logger.warning(f"portfolio price {sym}: {e}")
             return sym, None
@@ -632,7 +634,7 @@ async def get_portfolio():
         cost_total = round(cost * shares, 2)
         current_total = round(current * shares, 2) if current is not None else None
         pnl = round(current_total - cost_total, 2) if current_total is not None else None
-        pnl_pct = round((current - cost) / cost * 100, 2) if current else None
+        pnl_pct = round((current - cost) / cost * 100, 2) if current and cost else None
         stop_price = round(cost * (1 - sl_pct), 2) if not p["is_etf"] else None
         near_stop = bool(
             current is not None and stop_price is not None and current <= stop_price * 1.03
