@@ -1,6 +1,6 @@
 # ZeroHour — 開發進度追蹤
 
-> 最後更新：2026-06-28（第三階段完成）
+> 最後更新：2026-06-28（功能盤點 + 第三階段完成）
 
 ---
 
@@ -12,9 +12,9 @@
 - [x] Supabase PostgreSQL 連線（Session pooler IPv4）
 - [x] Upstash Redis 連線（TLS，Celery broker/backend）
 - [x] Fly.io 部署（東京，web×2 + worker + scheduler）
-- [x] Docker build、GitHub Actions CI/CD 設定
+- [x] Docker build、GitHub Actions CI/CD（main + master 雙分支觸發）
 
-### 核心交易引擎（第一階段）
+### 核心交易引擎（第一階段 §1–11）
 - [x] S1：MA200 趨勢過濾器（`src/signals/ma200_filter.py`）
 - [x] S2：台美時間差訊號（`src/signals/time_diff.py`）
 - [x] S3：組合策略決策（`src/signals/aggregator.py`）
@@ -26,185 +26,141 @@
 - [x] 成交追蹤（`src/execution/fill_tracker.py`）
 - [x] 回測引擎（`src/backtest/engine.py`）— 0050 2015-2024，年化+8%，Sharpe 1.18
 
-### 覆盤模組（程式碼存在，模組邏輯測試通過）
-- [x] Layer 1 合規檢查（`src/review/layer1_compliance.py`）
-- [x] Layer 2 訊號品質分析（`src/review/layer2_signal_quality.py`）
-- [x] Layer 3 AI 覆盤 Gemini（`src/review/layer3_ai_analysis.py`）
-- [x] 市場環境分類器（`src/review/market_regime.py`）
-- [x] 優勢衰減偵測（`src/review/edge_decay.py`）
-- [x] 過度擬合防護（`src/review/overfit_guard.py`）
-- [x] 穩定度評分（`src/review/stability_scorer.py`）
-- [x] 基準比較器（`src/review/benchmark.py`）
-- [x] 人為干預追蹤（`src/review/override_tracker.py`）
-- [x] 策略版本管理（`src/review/version_manager.py`）
-- [x] 稅後損益計算（`src/review/tax_calculator.py`）
-
-### API / 前端
-- [x] FastAPI Web Server（`/health`、`/signals/current`、`/positions`、`/performance`、`/backtest/run`）
-- [x] Dashboard UI（`src/static/index.html`），即時從 API 抓取資料
-- [x] Swagger UI（`/docs`）
-
-### 憑證驗證
-| 項目 | 狀態 |
-|------|------|
-| Supabase PostgreSQL | ✅ 連線成功，18 張表建立完成 |
-| Gemini API（gemini-2.5-flash） | ✅ 回應正常 |
-| Upstash Redis | ✅ Ping / Read / Write 驗證通過 |
-| Telegram 推播 | ⏳ BOT_TOKEN 待設定 |
-
----
-
-## ✅ P1 完成（2026-06-27）：資料持久化
-
-### DB 寫入狀況
+### DB 寫入狀況（18 張表）
 
 | 表格 | 說明 | 狀態 |
 |------|------|------|
-| `market_prices` | 美股每日收盤價 | ✅ 寫入（fetch_us_market_data，04:00） |
-| `trend_signals` | S1 MA200 訊號紀錄 | ✅ 寫入（generate_signal + check_monthly_trend） |
-| `time_diff_signals` | S2 時間差訊號紀錄 | ✅ 寫入（generate_signal，04:05） |
-| `orders` | 訂單紀錄 | ✅ 寫入（open_position / close_position） |
-| `fills` | 成交紀錄 | ✅ 寫入（open_position / close_position） |
-| `positions` | 持倉快照 | ✅ 寫入（open/close/update_position_price） |
-| `performance_snapshots` | 績效快照 | ✅ 寫入（update_positions，13:35） |
-| `review_reports` | 覆盤報告 | ⏳ 待 P2 |
-| `edge_decay_alerts` | 優勢衰減警報 | ⏳ 待 P2 |
+| `market_prices` | 美股每日收盤價 | ✅ 寫入（04:00）|
+| `trend_signals` | S1 MA200 訊號 | ✅ 寫入 |
+| `time_diff_signals` | S2 時間差訊號 | ✅ 寫入 |
+| `orders` | 訂單紀錄 | ✅ 寫入 |
+| `fills` | 成交紀錄 | ✅ 寫入 |
+| `positions` | 持倉快照 | ✅ 寫入 |
+| `performance_snapshots` | 績效快照 | ✅ 寫入（13:35）|
+| `review_reports` | 每日/週覆盤報告 | ✅ 寫入 |
+| `edge_decay_alerts` | 優勢衰減警報 | ✅ 寫入 |
+| `manual_overrides` | 人為干預紀錄 | ✅ 建立 |
+| `strategy_versions` | 策略版本管理 | ✅ 建立 |
+| `agent_market_contexts` | 每日市場背景 | ✅ 寫入（04:10）|
+| `black_swan_alerts` | 黑天鵝事件 | ✅ 寫入 |
+| `watchlist` | 選股候選名單 | ✅ 寫入（週日20:00）|
+| `agent_run_logs` | Agent 執行紀錄 | ✅ 建立 |
+| `portfolio_positions` | 持倉匯入（TW+US）| ✅ 建立（手動上傳）|
+| `orders`/`fills` 相關 | 訂單/成交 | ✅ 寫入 |
 
-### Celery 任務
+### Celery 排程任務
 
 | 任務 | 排程 | 狀態 |
 |------|------|------|
-| `fetch_us_market_data` | 04:00 | ✅ 儲存 market_prices |
-| `generate_signal` | 04:05 | ✅ S1+S2+S3 + Paper 下單 + DB 寫入 |
-| `update_positions` | 13:35 | ✅ 更新現價 + trailing stop + 績效快照 |
-| `check_monthly_trend` | 月底 22:00 | ✅ 儲存 trend_signals |
-| `run_daily_review` | 13:40 | ⏳ stub（P2 實作） |
-| `run_weekly_review` | 週五 14:00 | ⏳ stub（P3 實作） |
+| `fetch_us_market_data` | 04:00 | ✅ |
+| `check_black_swan` | 04:07 | ✅ |
+| `generate_signal` | 04:05 | ✅ S1+S2+S3 + Paper 下單 |
+| `run_market_context` | 04:10 | ✅ Gemini 市場背景 |
+| `update_positions` | 13:35 | ✅ 更新現價 + trailing stop |
+| `run_daily_review` | 13:40 | ✅ Layer1+2+3 → Discord |
+| `run_weekly_review` | 週五 14:00 | ✅ Gemini 週報 → Discord |
+| `run_stock_selection` | 週日 20:00 | ✅ 4-Agent Pipeline |
+| `check_monthly_trend` | 月底 22:00 | ✅ |
 | `daily_backup` | 23:00 | ✅ checkpoint log |
+| `run_monthly_review` | 月底 22:05 | ❌ **未實作**（計劃 §12.11）|
 
-### API
+### API 端點
 
 | 端點 | 狀態 |
 |------|------|
-| `GET /api/v1/signals/current` | ✅ 即時計算 S1/S2/S3 |
-| `GET /api/v1/positions` | ✅ 從 DB 讀取最新持倉 |
-| `GET /api/v1/performance` | ✅ 從 DB 讀取最新績效快照 |
-| `GET /api/v1/review/daily/latest` | ✅ 回傳最新每日覆盤 |
-| `GET /api/v1/review/weekly/latest` | ✅ 回傳最新週覆盤 |
+| `GET /api/v1/signals/current` | ✅ |
+| `GET /api/v1/signals/history?days=30` | ✅ |
+| `GET /api/v1/positions` | ✅ |
+| `GET /api/v1/performance` | ✅ |
+| `GET /api/v1/performance/history?days=60` | ✅ |
+| `GET /api/v1/review/daily/latest` | ✅ |
+| `GET /api/v1/review/weekly/latest` | ✅ |
+| `GET /api/v1/agents/market-context/latest` | ✅ |
+| `GET /api/v1/agents/black-swan/status` | ✅ |
+| `GET /api/v1/watchlist` | ✅ |
+| `GET /api/v1/watchlist/prices` | ✅ 即時價格 + 觸發分析 |
+| `POST /api/v1/watchlist/prices` | ✅ 部位計算機 |
+| `GET /api/v1/portfolio` | ✅ TW+US 持倉 + 匯率 |
+| `POST /api/v1/portfolio/import` | ✅ 自動偵測 TW/US CSV |
+| `POST /api/v1/tasks/{task_name}` | ✅ 8 個任務手動觸發 |
+| `POST /api/v1/backtest/run` | ✅ |
+| `POST /api/v1/backtest/compare` | ✅ S1/S2/S3 比較 |
 
-## ✅ P2 完成（2026-06-27）：每日覆盤完整流程
+### 超出計劃新增的功能（本次 Sessions）
 
-`run_daily_review`（13:40）：
-- Layer1 合規檢查 → Layer2 訊號品質 → Layer3 Gemini AI 分析
-- 市場環境分類（MA50/MA200/VIX）
-- 儲存 `review_reports` 表格 → Discord 推播
-
-## ✅ P3 完成（2026-06-27）：週覆盤
-
-`run_weekly_review`（週五 14:00）：
-- 彙整本週所有訊號 + 交易紀錄
-- `run_weekly_ai_review`：Gemini 週報 prompt
-- 儲存 `review_reports`（週一日期，避免 unique 衝突）
-- Discord 週報推播
-- Dashboard 週覆盤區塊（訊號品質 / 市場環境 / AI 摘要）
-
-## ✅ P4 完成（2026-06-27）：Discord 推播
-
-- `src/alerts/discord.py`：5 種推播（訊號/成交/停損/每日摘要/週覆盤）
-- DISCORD_WEBHOOK_URL 已設定至 Fly.io secrets
-- 整合到 generate_signal / update_positions / run_daily_review / run_weekly_review
-
----
-
-## ✅ P5 完成（2026-06-27）：GitHub CI/CD
-
-- FLY_API_TOKEN 設定至 GitHub Secrets
-- `.github/workflows/deploy.yml` 加入 master 分支觸發
-- push master 自動部署至 Fly.io
-
----
-
-## ✅ 第二階段完成（2026-06-27）
-
-### Agent 系統
-
-| Agent | 檔案 | 排程 | 說明 |
-|-------|------|------|------|
-| Market Context | `src/agents/market_context_agent.py` | 04:10 每日 | Gemini 解讀美股背景對台股影響 |
-| 黑天鵝偵測 | `src/agents/black_swan_agent.py` | 04:07 每日 | VIX/NASDAQ 純量化，無 LLM |
-| 基本面 Agent | `src/agents/stock_selection/fundamental_agent.py` | 週日 20:00 | yfinance + Gemini |
-| 催化劑 Agent | `src/agents/stock_selection/catalyst_agent.py` | 週日 20:00 | 財報日期 + 新聞 + Gemini |
-| 供應鏈 Agent | `src/agents/stock_selection/supply_chain_agent.py` | 週日 20:00 | 靜態知識庫 + Gemini |
-| 技術面 Agent | `src/agents/stock_selection/technical_agent.py` | 週日 20:00 | RSI/MACD/MA，純量化 |
-| 選股 Pipeline | `src/agents/stock_selection/pipeline.py` | 週日 20:00 | 整合 4 Agent → Watchlist |
-
-### 股票池
-15 支台灣科技供應鏈股（2330.TW、2454.TW、2317.TW 等），分數 ≥ 60 進入 Watchlist，最多 8 支。
-
-### 新 API 端點
-| 端點 | 說明 |
+| 功能 | 說明 |
 |------|------|
-| `GET /api/v1/agents/market-context/latest` | 最新市場背景分析 |
-| `GET /api/v1/agents/black-swan/status` | 近 7 天黑天鵝狀態 |
-| `GET /api/v1/watchlist` | 目前 Watchlist |
+| Watchlist 即時股價 | `fast_info.last_price` + ±30% 合理性檢查 |
+| 進場觸發評分 | 0–7 分制，5 個指標，「立即進場/等待確認/繼續觀察/暫勿進場」 |
+| 部位計算機 | 輸入總資金 + 風險 % → 各股建議部位 |
+| 持倉追蹤（台股）| 國泰世華 CSV 匯入，止損/獲利追蹤 |
+| 持倉追蹤（美股）| 複委託 CSV 匯入，碎股/USD/匯率換算 |
+| 今日結論 | 市場背景卡片新增 context_summary + key_risks |
+| 止損/目標價 | Watchlist 每股顯示止損（-12%）+ 獲利目標（+24%，2:1 R/R）|
+| 52 週位置 | Watchlist 顯示目前股價在年度高低點的百分位 |
+| 成交量比 | 近 20 日均量對比 |
 
-### Dashboard 新區塊
-- 市場背景卡片（驅動力 / 台股關聯度 / 信心修正值）
-- 黑天鵝偵測卡片（NONE / WATCH / ALERT / CRITICAL）
-- Watchlist 表格（代號 / 分數 / 推薦 / 論點 / 進場條件）
+### 憑證驗證
 
----
-
----
-
-## ✅ 第三階段完成（2026-06-28）
-
-### 新功能：手動觸發 API
-`POST /api/v1/tasks/{task_name}` — 8 個允許的任務名稱
-
-| 任務名稱 | 說明 |
-|---------|------|
-| `fetch_us_market_data` | 抓取美股資料 |
-| `generate_signal` | 生成今日 S1/S2/S3 訊號 |
-| `update_positions` | 更新持倉現價 |
-| `run_daily_review` | 執行每日覆盤 |
-| `run_weekly_review` | 執行週覆盤 |
-| `run_market_context` | 市場背景 Agent |
-| `check_black_swan` | 黑天鵝偵測 |
-| `run_stock_selection` | 選股 Pipeline |
-
-### 新功能：資金曲線圖
-- `GET /api/v1/performance/history?days=60` — 每日資金快照
-- Dashboard Chart.js 折線圖，顯示 NT$ 總資金 + 報酬率
-
-### 新功能：S1/S2/S3 回測比較
-- `POST /api/v1/backtest/compare` — 三策略並排回測
-- BacktestEngine 加入 `strategy` 參數（S1/S2/S3）
-- Dashboard 表格顯示，最佳值綠色標注
-
-### 新功能：訊號歷史頁
-- `GET /api/v1/signals/history?days=30` — 近 30 天訊號紀錄
-- Dashboard 表格：日期 / S2 方向 / 信心 / 三大指數 / S1 趨勢 / 建議動作
-
-### 新功能：E2E 測試套件
-- `tests/e2e/test_api_e2e.py` — httpx API 測試（17 個 test case）
-- `tests/e2e/test_dashboard_playwright.py` — Playwright 瀏覽器測試（需 `pip install playwright pytest-playwright`）
-
-### DB helpers 新增
-- `get_performance_history(days)` → `performance_snapshots` 表
-- `get_signal_history(days)` → `time_diff_signals` 表 + 對應最近 `trend_signals`
+| 項目 | 狀態 |
+|------|------|
+| Supabase PostgreSQL | ✅ 18 張表 |
+| Gemini API（gemini-2.5-flash）| ✅ |
+| Upstash Redis | ✅ |
+| Discord Webhook | ✅ 5 種推播（替代原計劃 Telegram）|
+| Telegram BOT_TOKEN | ❌ **已由 Discord 取代，不再需要** |
 
 ---
 
-## 📋 建議優先順序（第一階段補完）
+## ❌ 計劃中但未實作
 
-| 優先 | 項目 | 說明 |
-|------|------|------|
-| P1 | 資料持久化 | 訊號、訂單、持倉寫入 Supabase，API 從 DB 讀取 |
-| P2 | 每日覆盤完整流程 | Layer1+2+3 串接 → 存 DB → Telegram |
-| P3 | 每週覆盤 | 週五 14:00，Gemini 分析 + Dashboard 顯示 |
-| P4 | Telegram 推播整合 | 設定 BOT_TOKEN，訊號觸發立即推播 |
-| P5 | GitHub Secrets / CI/CD | 自動部署啟用 |
+| 項目 | 計劃章節 | 說明 | 優先度 |
+|------|---------|------|--------|
+| `run_monthly_review` Celery 任務 | §12.11 | 月底執行穩定度評分、月度回測比對、AI 分析頻率自動調整 | 低 |
+| `ShadowTestResult` DB 表 | §12.3 | A/B 影子測試結果記錄（新版本上線前比較用）| 低 |
+| 真實券商 Adapter | §4.6 | IBKR / 元大期貨連線（`paper` only）| 待策略驗證後 |
+| `08:55` 集合競價確認任務 | §2.3 | 開盤前最終確認 + 委託送出 | 待真實下單前 |
+| API 認證（JWT Bearer）| §6.1 | 原計劃有 Token 驗證，現在 API 完全公開 | 中（見優化建議）|
+
+---
+
+## 🔧 優化建議（已識別）
+
+### 高優先：安全性
+
+**1. API 缺乏認證** — 所有端點目前無驗證，包括 `POST /api/v1/tasks/{task_name}`（可觸發 Gemini API 呼叫導致額外費用）。計劃 §6.1 原有 Bearer Token 但從未實作。
+- **建議做法**：加入簡單 `X-API-Key` header 驗證（Fly.io secret 管理）
+
+### 高優先：效能
+
+**2. Watchlist + Portfolio 每次都重新抓 1 年資料** — `_fetch_one()` 每次頁面載入都呼叫 `tkr.history(period="1y")` + `fast_info.last_price`。8 支 Watchlist 股票 = 8 個並發 yfinance 請求，每個下載 250 筆資料。
+- **建議做法**：Redis 快取，TTL = 5 分鐘（技術指標不需要秒更新）
+
+### 中優先：功能完整性
+
+**3. 每日任務未排除非交易日** — `generate_signal`、`run_daily_review`、`update_positions` 每天都跑，包含週六、週日、台灣市場休假日。非交易日執行不會產生錯誤（因為 yfinance 不回傳新資料），但多餘的 Gemini API 呼叫會浪費配額。
+- **建議做法**：任務開頭加台灣市場是否開市檢查
+
+**4. GitHub CI 沒有阻擋部署** — `deploy.yml` 沒有 `needs: [test]`，所以測試失敗時仍會部署。這是 CI/CD 的品質漏洞。
+- **建議做法**：在 deploy.yml 加 `needs: [test]`（需要先確認 test.yml 全通過）
+
+### 低優先：計劃完整性
+
+**5. 月度覆盤未實作** — §12.11 的 `run_monthly_review` 包含穩定度評分計算、月度回測比對、AI 分析頻率自動調整，是策略優化迴路的重要環節。
+
+**6. ShadowTestResult 表缺少** — 若未來需要 A/B 測試策略版本，目前資料庫沒有對應的記錄表。
+
+---
+
+## 📋 建議下一步優先順序
+
+| 優先 | 項目 | 預估工作量 |
+|------|------|-----------|
+| 1 | API 認證（X-API-Key）| 小（30 分鐘）|
+| 2 | Redis 快取 Watchlist/Portfolio 價格 | 中（2 小時）|
+| 3 | 每日任務加市場日過濾 | 小（1 小時）|
+| 4 | deploy.yml 加 `needs: [test]` | 微（10 分鐘）|
+| 5 | `run_monthly_review` 實作 | 中（3 小時）|
 
 ---
 
@@ -216,4 +172,8 @@
 | pydantic-settings 管理設定 | 型別安全 + .env 自動載入 |
 | Alembic 使用 sync URL | alembic 本身不支援 async，env.py 自動轉換 |
 | Celery rediss:// + CERT_NONE | Upstash Redis TLS 要求，URL 直接附加 ssl_cert_reqs |
-| Gemini 取代 Claude API | 避免額外付費，gemini-2.5-flash 免費方案夠用 |
+| Gemini 取代 Claude API（覆盤/選股）| 避免額外付費，gemini-2.5-flash 免費方案夠用 |
+| Discord 取代 Telegram（推播）| BOT_TOKEN 設定複雜，Discord Webhook 更簡單 |
+| 持倉 CSV 手動上傳（非 API 串接）| 國泰世華無公開 API，手動匯出 CSV 最穩定 |
+| 複委託美股 CSV 自動偵測格式 | 有「代號」欄 = 美股格式，否則 = 台股格式，分 market 儲存 |
+| 止損 12%（Numeric，非除100）| `index_stop_loss_pct = 0.12`，直接 `price × (1-0.12)`，不得再除 100 |
