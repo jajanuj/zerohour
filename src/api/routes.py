@@ -54,10 +54,23 @@ async def get_current_signals():
         norm = DataNormalizer()
 
         # S2：時間差訊號（用美股最新收盤漲跌）
+        import math as _math
+
+        def _safe_chg(d: dict | None) -> float:
+            """從 get_all_signals_data 結果安全取 change_pct，防止 None / NaN。"""
+            if not d:
+                return 0.0
+            v = d.get("change_pct", 0.0)
+            try:
+                f = float(v)
+                return f if _math.isfinite(f) else 0.0
+            except (TypeError, ValueError):
+                return 0.0
+
         us_data = await loop.run_in_executor(None, fetcher.get_all_signals_data)
-        nasdaq_chg = us_data.get("nasdaq", {}).get("change_pct", 0.0) or 0.0
-        sp500_chg  = us_data.get("sp500",  {}).get("change_pct", 0.0) or 0.0
-        sox_chg    = us_data.get("sox",    {}).get("change_pct", 0.0) or 0.0
+        nasdaq_chg = _safe_chg(us_data.get("nasdaq"))
+        sp500_chg  = _safe_chg(us_data.get("sp500"))
+        sox_chg    = _safe_chg(us_data.get("sox"))
 
         gen = TimeDiffSignalGenerator(
             nasdaq_threshold=settings.us_signal_threshold,
@@ -296,6 +309,44 @@ async def trigger_task(task_name: str):
     except Exception as e:
         logger.error(f"trigger_task {task_name} error: {e}", exc_info=True)
         return TaskTriggerResponse(status="error", task=task_name, message=str(e))
+
+
+@router.get("/debug/celery")
+async def debug_celery():
+    """診斷 Celery Worker 是否在線，並回報 pending task 數量。"""
+    import asyncio as _aio
+    from ..tasks import celery_app
+
+    def _inspect():
+        insp = celery_app.control.inspect(timeout=3.0)
+        stats   = insp.stats()   or {}
+        active  = insp.active()  or {}
+        reserved = insp.reserved() or {}
+        return {
+            "workers_online": list(stats.keys()),
+            "worker_count": len(stats),
+            "active_tasks": {w: len(t) for w, t in active.items()},
+            "reserved_tasks": {w: len(t) for w, t in reserved.items()},
+        }
+
+    try:
+        loop = _aio.get_running_loop()
+        result = await _aio.wait_for(
+            loop.run_in_executor(None, _inspect),
+            timeout=5.0,
+        )
+        if result["worker_count"] == 0:
+            result["diagnosis"] = "⚠️ 沒有 Worker 在線！請確認 Fly.io Worker 機器是否啟動（flyctl status / flyctl scale count worker=1）"
+        else:
+            result["diagnosis"] = f"✅ {result['worker_count']} 個 Worker 在線"
+        return result
+    except _aio.TimeoutError:
+        return {
+            "error": "timeout",
+            "diagnosis": "⚠️ Celery inspect 超時 (5s) — Worker 未在線或 Redis 無法從 Web 連接",
+        }
+    except Exception as e:
+        return {"error": str(e), "diagnosis": "⚠️ 發生例外"}
 
 
 @router.get("/performance/history", response_model=list[PerformanceHistoryItem])

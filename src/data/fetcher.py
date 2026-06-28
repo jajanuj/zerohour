@@ -1,3 +1,4 @@
+import math
 import yfinance as yf
 import pandas as pd
 from datetime import datetime
@@ -31,17 +32,24 @@ class USMarketFetcher:
         if hist.empty:
             raise ValueError(f"無法取得 {ticker_code} 的資料")
 
+        # Drop any rows where Close is NaN (can happen for indices on weekends)
+        hist = hist.dropna(subset=["Close"])
+        if hist.empty:
+            raise ValueError(f"{ticker_code} 所有資料列 Close 均為 NaN")
+
         latest = hist.iloc[-1]
         prev = hist.iloc[-2] if len(hist) > 1 else None
         change_pct = 0.0
         if prev is not None:
-            change_pct = (latest["Close"] - prev["Close"]) / prev["Close"] * 100
+            raw = (float(latest["Close"]) - float(prev["Close"])) / float(prev["Close"]) * 100
+            # Guard NaN / Inf — Pydantic v2 serialises float('nan') → JSON null
+            change_pct = raw if math.isfinite(raw) else 0.0
 
         return {
             "symbol": ticker_code,
             "date": hist.index[-1].to_pydatetime(),
             "close": float(latest["Close"]),
-            "change_pct": round(float(change_pct), 4),
+            "change_pct": round(change_pct, 4),
             "volume": int(latest["Volume"]),
         }
 
