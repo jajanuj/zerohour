@@ -1,4 +1,4 @@
-from fastapi import APIRouter, HTTPException, Depends
+from fastapi import APIRouter, HTTPException, Depends, UploadFile
 from typing import Optional
 import logging
 
@@ -448,6 +448,175 @@ async def get_watchlist_prices():
         if data is not None:
             out[sym] = data
     return out
+
+
+# ── 持倉 CSV 匯入 ────────────────────────────────────────────────────
+
+# 國泰世華股票中文名稱 → yfinance 代號對照表
+_TW_NAME_TO_SYMBOL: dict[str, str] = {
+    # 個股
+    "台積電": "2330.TW", "鴻海": "2317.TW", "聯發科": "2454.TW",
+    "中華電": "2412.TW", "聯電": "2303.TW", "大立光": "3008.TW",
+    "廣達": "2382.TW", "台達電": "2308.TW", "華碩": "2357.TW",
+    "瑞昱": "2379.TW", "日月光投控": "3711.TW", "研華": "2395.TW",
+    "旺宏": "2337.TW", "華邦電": "2344.TW", "聯詠": "3034.TW",
+    "國巨": "2327.TW", "南亞科": "2408.TW", "和碩": "4938.TW",
+    "泰銘": "8928.TW", "中美晶": "5483.TW", "宏碁": "2353.TW",
+    "富邦媒": "8454.TW", "統一": "1216.TW", "台塑": "1301.TW",
+    "南亞": "1303.TW", "台化": "1326.TW", "台灣大": "3045.TW",
+    "遠傳": "4904.TW", "富邦金": "2881.TW", "國泰金": "2882.TW",
+    "中信金": "2891.TW", "兆豐金": "2886.TW",
+    # ETF（台股代號以 0 開頭 → is_etf=True）
+    "元大台灣50": "0050.TW", "元大高股息": "0056.TW",
+    "富邦台50": "006208.TW", "元大美債20年": "00679B.TW",
+    "復華富時不動產": "00712.TW", "元大台灣高息低波": "00713.TW",
+    "元大AAA至A公司債": "00751B.TW", "國泰永續高股息": "00878.TW",
+    "凱基優選高股息30": "00915.TW", "群益台灣精選高息": "00919.TW",
+    "主動統一台股增長": "00932.TW", "國泰台灣5G+": "00881.TW",
+    "富邦高股息": "00900.TW", "中信關鍵半導體": "00891.TW",
+    "永豐台灣ESG": "00888.TW", "台新臺灣永續指數": "00850.TW",
+    "元大台灣ESG永續": "00850.TW", "統一FANG+": "00757.TW",
+    "國泰美國道瓊": "00668.TW", "富邦NASDAQ": "00662.TW",
+    "元大S&P500": "00646.TW", "富邦美國科技": "00712.TW",
+}
+
+
+@router.post("/portfolio/import")
+async def import_portfolio_csv(file: UploadFile):
+    """解析國泰世華「未實現彙總 CSV」，全量覆蓋持倉資料。"""
+    import io, csv
+    from datetime import datetime as _dt
+    from ..database.helpers import save_portfolio_positions
+
+    content = await file.read()
+    # 國泰世華 CSV 可能有 BOM，用 utf-8-sig 解碼
+    try:
+        text = content.decode("utf-8-sig")
+    except UnicodeDecodeError:
+        text = content.decode("big5", errors="replace")
+
+    reader = csv.DictReader(io.StringIO(text))
+    positions = []
+    unmapped = []
+    now = _dt.utcnow()
+
+    for row in reader:
+        name = (row.get("股票名稱") or "").strip()
+        # 跳過空行和彙總行（國泰底部有「總預估損益」等合計列）
+        if not name or name.startswith("總"):
+            continue
+
+        try:
+            shares = int(float((row.get("股數") or "0").replace(",", "")))
+            avg_cost = float((row.get("成交均價") or "0").replace(",", ""))
+        except (ValueError, AttributeError):
+            continue
+
+        if shares <= 0 or avg_cost <= 0:
+            continue
+
+        symbol = _TW_NAME_TO_SYMBOL.get(name)
+        if not symbol:
+            unmapped.append(name)
+        is_etf = bool(symbol and symbol.startswith("0"))
+
+        positions.append({
+            "symbol": symbol,
+            "name": name,
+            "shares": shares,
+            "avg_cost": avg_cost,
+            "is_etf": is_etf,
+            "imported_at": now,
+        })
+
+    count = await save_portfolio_positions(positions)
+    return {
+        "imported": count,
+        "unmapped": unmapped,
+        "message": (
+            f"成功匯入 {count} 筆持倉"
+            + (f"，以下 {len(unmapped)} 支未識別代號（仍匯入，股價顯示 N/A）：{', '.join(unmapped)}" if unmapped else "")
+        ),
+    }
+
+
+@router.get("/portfolio")
+async def get_portfolio():
+    """取得持倉列表，附帶即時股價、損益、止損狀態。"""
+    import asyncio as _aio
+    from concurrent.futures import ThreadPoolExecutor
+    from ..database.helpers import get_portfolio_positions
+
+    positions = await get_portfolio_positions()
+    if not positions:
+        return []
+
+    sl_pct = settings.index_stop_loss_pct  # 0.12
+
+    def _fetch_price(sym: str):
+        try:
+            import yfinance as _yf
+            tkr = _yf.Ticker(sym)
+            try:
+                live = float(tkr.fast_info.last_price or 0)
+            except Exception:
+                live = 0.0
+            if live <= 0:
+                hist = tkr.history(period="3d").dropna(subset=["Close"])
+                live = float(hist.iloc[-1]["Close"]) if not hist.empty else 0.0
+            return sym, round(live, 2)
+        except Exception as e:
+            logger.warning(f"portfolio price {sym}: {e}")
+            return sym, None
+
+    # 只抓有效代號的股票
+    valid_syms = list({p["symbol"] for p in positions if p["symbol"]})
+    loop = _aio.get_running_loop()
+    with ThreadPoolExecutor(max_workers=10) as pool:
+        futs = [loop.run_in_executor(pool, _fetch_price, s) for s in valid_syms]
+        price_results = await _aio.gather(*futs, return_exceptions=True)
+
+    price_map = {}
+    for r in price_results:
+        if isinstance(r, Exception):
+            continue
+        sym, px = r
+        if px is not None:
+            price_map[sym] = px
+
+    result = []
+    for p in positions:
+        sym = p["symbol"]
+        current = price_map.get(sym) if sym else None
+        cost = p["avg_cost"]
+        shares = p["shares"]
+        cost_total = round(cost * shares, 0)
+        current_total = round(current * shares, 0) if current else None
+        pnl = round(current_total - cost_total, 0) if current_total is not None else None
+        pnl_pct = round((current - cost) / cost * 100, 2) if current else None
+        stop_price = round(cost * (1 - sl_pct), 1) if not p["is_etf"] else None
+        near_stop = (
+            current is not None
+            and stop_price is not None
+            and current <= stop_price * 1.03  # 距止損 3% 以內 = 警告
+        )
+        below_stop = (
+            current is not None
+            and stop_price is not None
+            and current < stop_price
+        )
+        result.append({
+            **p,
+            "current_price": current,
+            "cost_total": int(cost_total),
+            "current_total": int(current_total) if current_total is not None else None,
+            "pnl": int(pnl) if pnl is not None else None,
+            "pnl_pct": pnl_pct,
+            "stop_price": stop_price,
+            "near_stop": near_stop,
+            "below_stop": below_stop,
+        })
+    return result
 
 
 _ALLOWED_TASKS = {

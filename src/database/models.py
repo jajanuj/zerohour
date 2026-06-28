@@ -233,6 +233,19 @@ class WatchlistItem(Base):
     created_at = Column(DateTime, default=datetime.utcnow)
 
 
+class PortfolioPosition(Base):
+    """持倉記錄 — 從券商 CSV 匯入，每次上傳全量覆蓋。"""
+    __tablename__ = "portfolio_positions"
+
+    id = Column(Integer, primary_key=True, autoincrement=True)
+    symbol = Column(String(20), nullable=True)   # yfinance ticker，未識別時為 None
+    name = Column(String(100), nullable=False)   # 中文股票名稱
+    shares = Column(Integer, nullable=False)
+    avg_cost = Column(Numeric(12, 2), nullable=False)
+    is_etf = Column(Boolean, default=False)      # True = ETF，不設止損警報
+    imported_at = Column(DateTime, nullable=False, default=datetime.utcnow)
+
+
 class AgentRunLog(Base):
     __tablename__ = "agent_run_logs"
 

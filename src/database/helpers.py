@@ -17,6 +17,7 @@ from .models import (
     BlackSwanAlertRecord,
     WatchlistItem,
     AgentRunLog,
+    PortfolioPosition,
 )
 
 logger = logging.getLogger(__name__)
@@ -789,3 +790,34 @@ async def get_latest_performance() -> dict | None:
             "extra_data": row.extra_data or {},
             "snapshot_date": row.snapshot_date,
         }
+
+
+async def save_portfolio_positions(positions: list[dict]) -> int:
+    """全量覆蓋持倉資料（每次 CSV 匯入時呼叫）。"""
+    from sqlalchemy import text
+    async with get_session() as session:
+        await session.execute(text("DELETE FROM portfolio_positions"))
+        for pos in positions:
+            session.add(PortfolioPosition(**pos))
+        await session.flush()
+    return len(positions)
+
+
+async def get_portfolio_positions() -> list[dict]:
+    """取得所有持倉。"""
+    async with get_session() as session:
+        result = await session.execute(
+            select(PortfolioPosition).order_by(PortfolioPosition.id)
+        )
+        rows = result.scalars().all()
+        return [
+            {
+                "symbol": r.symbol,
+                "name": r.name,
+                "shares": r.shares,
+                "avg_cost": float(r.avg_cost),
+                "is_etf": r.is_etf,
+                "imported_at": r.imported_at.isoformat() if r.imported_at else None,
+            }
+            for r in rows
+        ]

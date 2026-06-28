@@ -387,6 +387,45 @@
 
   <div class="divider"></div>
 
+  <!-- My Portfolio -->
+  <div class="section-title">我的持倉</div>
+  <div class="card" style="margin-bottom:20px">
+    <div class="card-header">
+      <span class="card-title"><i class="ti ti-wallet" aria-hidden="true"></i>國泰世華持倉追蹤</span>
+      <span id="portfolio-badge" class="badge badge-gray">未匯入</span>
+    </div>
+    <div class="card-body">
+      <div style="display:flex;align-items:center;gap:12px;margin-bottom:14px;flex-wrap:wrap">
+        <label style="display:flex;align-items:center;gap:8px;font-size:12px;color:var(--text-muted);cursor:pointer">
+          <input type="file" id="portfolio-file" accept=".csv" style="display:none">
+          <button onclick="document.getElementById('portfolio-file').click()"
+            style="background:var(--blue);color:#fff;border:none;padding:6px 14px;border-radius:6px;cursor:pointer;font-size:12px">
+            📂 上傳國泰 CSV
+          </button>
+          <span id="portfolio-filename" style="color:var(--text-muted)">未選擇檔案</span>
+        </label>
+        <button id="portfolio-upload-btn" onclick="uploadPortfolioCSV()" disabled
+          style="background:var(--green);color:#000;border:none;padding:6px 14px;border-radius:6px;cursor:pointer;font-size:12px;opacity:0.5">
+          ✅ 匯入更新
+        </button>
+        <span style="font-size:11px;color:var(--text-light)">從國泰世華App → 帳戶 → 未實現損益 → 匯出CSV</span>
+      </div>
+      <div id="portfolio-msg" style="font-size:11px;color:var(--yellow);margin-bottom:8px"></div>
+      <div id="portfolio-summary" style="display:none;margin-bottom:12px;background:rgba(255,255,255,0.03);border-radius:6px;padding:10px 14px">
+        <div class="grid3" style="gap:12px">
+          <div><div class="sig-label">總持倉市值</div><div class="sig-value neut" id="ptf-total-value">—</div></div>
+          <div><div class="sig-label">總損益</div><div class="sig-value neut" id="ptf-total-pnl">—</div></div>
+          <div><div class="sig-label">最大止損風險</div><div class="sig-value neut" id="ptf-max-risk">—</div></div>
+        </div>
+      </div>
+      <div id="portfolio-area">
+        <div class="empty-state">上傳 CSV 後顯示持倉資料</div>
+      </div>
+    </div>
+  </div>
+
+  <div class="divider"></div>
+
   <!-- Weekly Review -->
   <div class="section-title">週覆盤報告</div>
   <div class="card" style="margin-bottom:20px">
@@ -1022,6 +1061,145 @@ async function loadWatchlist() {
   }
 }
 
+// ── 持倉 CSV 上傳 ────────────────────────────────────────────────────
+document.addEventListener('DOMContentLoaded', () => {
+  const fileInput = document.getElementById('portfolio-file');
+  if (fileInput) {
+    fileInput.addEventListener('change', () => {
+      const f = fileInput.files[0];
+      if (f) {
+        document.getElementById('portfolio-filename').textContent = f.name;
+        document.getElementById('portfolio-upload-btn').disabled = false;
+        document.getElementById('portfolio-upload-btn').style.opacity = '1';
+      }
+    });
+  }
+});
+
+async function uploadPortfolioCSV() {
+  const fileInput = document.getElementById('portfolio-file');
+  const msgEl = document.getElementById('portfolio-msg');
+  if (!fileInput.files[0]) return;
+  const btn = document.getElementById('portfolio-upload-btn');
+  btn.textContent = '匯入中…'; btn.disabled = true;
+  try {
+    const form = new FormData();
+    form.append('file', fileInput.files[0]);
+    const r = await fetch(API + '/api/v1/portfolio/import', { method: 'POST', body: form });
+    const d = await r.json();
+    msgEl.textContent = d.message || '匯入完成';
+    msgEl.style.color = d.unmapped?.length ? 'var(--yellow)' : 'var(--green)';
+    await loadPortfolio();
+  } catch(e) {
+    msgEl.textContent = '匯入失敗：' + e.message;
+    msgEl.style.color = 'var(--red)';
+  } finally {
+    btn.textContent = '✅ 匯入更新'; btn.disabled = false;
+  }
+}
+
+async function loadPortfolio() {
+  const area = document.getElementById('portfolio-area');
+  const badge = document.getElementById('portfolio-badge');
+  const summary = document.getElementById('portfolio-summary');
+  try {
+    const r = await fetch(API + '/api/v1/portfolio');
+    if (!r.ok) throw new Error(r.statusText);
+    const items = await r.json();
+    if (!items.length) {
+      badge.textContent = '未匯入'; badge.className = 'badge badge-gray';
+      area.innerHTML = '<div class="empty-state">上傳 CSV 後顯示持倉資料</div>';
+      summary.style.display = 'none';
+      return;
+    }
+
+    // 彙總計算
+    const alerts = items.filter(i => i.below_stop || i.near_stop);
+    badge.textContent = items.length + ' 支股票' + (alerts.length ? ` ⚠${alerts.length}警報` : '');
+    badge.className = 'badge ' + (alerts.length ? 'badge-sell' : 'badge-ok');
+
+    const totalValue = items.reduce((s, i) => s + (i.current_total || i.cost_total || 0), 0);
+    const totalPnl = items.reduce((s, i) => s + (i.pnl || 0), 0);
+    const totalPnlPct = items.reduce((s, i) => s + (i.cost_total || 0), 0);
+    // 最大止損風險：只計算個股（非ETF）距止損尚未觸及的損失
+    const maxRisk = items
+      .filter(i => !i.is_etf && i.stop_price && i.current_price && i.current_price > i.stop_price)
+      .reduce((s, i) => s + (i.current_price - i.stop_price) * i.shares, 0);
+
+    summary.style.display = 'block';
+    const tvEl = document.getElementById('ptf-total-value');
+    tvEl.textContent = 'NT$' + Math.round(totalValue).toLocaleString();
+    const pnlEl = document.getElementById('ptf-total-pnl');
+    const overallPct = totalPnlPct > 0 ? (totalPnl / totalPnlPct * 100).toFixed(1) : 0;
+    pnlEl.textContent = (totalPnl >= 0 ? '+' : '') + 'NT$' + Math.round(totalPnl).toLocaleString() + ` (${overallPct >= 0 ? '+' : ''}${overallPct}%)`;
+    pnlEl.className = 'sig-value ' + (totalPnl >= 0 ? 'bull' : 'bear');
+    const riskEl = document.getElementById('ptf-max-risk');
+    riskEl.textContent = maxRisk > 0 ? '−NT$' + Math.round(maxRisk).toLocaleString() : '—';
+    riskEl.className = 'sig-value ' + (maxRisk > 50000 ? 'bear' : 'neut');
+
+    // 表格
+    const stopLossPct = 12;
+    area.innerHTML = `
+      <div style="overflow-x:auto">
+      <table class="pos-table" style="min-width:800px">
+        <thead><tr>
+          <th>代號 / 名稱</th>
+          <th class="right">持股數</th>
+          <th class="right">成本均價</th>
+          <th class="right">目前股價</th>
+          <th class="right">損益 (報酬率)</th>
+          <th class="right">止損價</th>
+          <th>狀態</th>
+        </tr></thead>
+        <tbody>
+          ${items.map(i => {
+            const pnlColor = (i.pnl || 0) >= 0 ? 'var(--green)' : 'var(--red)';
+            const pnlSign = (i.pnl || 0) >= 0 ? '+' : '';
+            const pnlPctSign = (i.pnl_pct || 0) >= 0 ? '+' : '';
+            let statusHtml = '';
+            if (i.below_stop) {
+              statusHtml = `<span style="color:var(--red);font-weight:600">🚨 已跌破止損！立即處理</span>`;
+            } else if (i.near_stop) {
+              statusHtml = `<span style="color:var(--yellow)">⚠ 接近止損線</span>`;
+            } else if (i.is_etf) {
+              statusHtml = `<span style="color:var(--text-light)">ETF 長期持有</span>`;
+            } else if ((i.pnl_pct || 0) >= 20) {
+              statusHtml = `<span style="color:var(--green)">💰 獲利 ≥20%，考慮部分出場</span>`;
+            } else {
+              statusHtml = `<span style="color:var(--text-muted)">正常持有</span>`;
+            }
+            const sym = i.symbol || '—';
+            const px = i.current_price != null ? 'NT$' + i.current_price : 'N/A';
+            return `<tr style="${i.below_stop ? 'background:rgba(255,60,60,0.08)' : i.near_stop ? 'background:rgba(255,200,0,0.06)' : ''}">
+              <td>
+                <strong>${sym}</strong>
+                <div style="font-size:11px;color:var(--text-muted)">${i.name}</div>
+                ${i.is_etf ? '<div style="font-size:10px;color:var(--text-light)">ETF</div>' : ''}
+              </td>
+              <td class="right">${i.shares.toLocaleString()}</td>
+              <td class="right">NT$${i.avg_cost.toFixed(2)}</td>
+              <td class="right"><strong>${px}</strong></td>
+              <td class="right" style="color:${pnlColor}">
+                ${i.pnl != null ? pnlSign + 'NT$' + Math.abs(i.pnl).toLocaleString() : '—'}
+                <div style="font-size:10px">${i.pnl_pct != null ? pnlPctSign + i.pnl_pct + '%' : ''}</div>
+              </td>
+              <td class="right" style="font-size:11px;color:var(--red)">
+                ${i.stop_price ? 'NT$' + i.stop_price : '—'}
+              </td>
+              <td style="font-size:11px">${statusHtml}</td>
+            </tr>`;
+          }).join('')}
+        </tbody>
+      </table>
+      </div>
+      <div style="font-size:11px;color:var(--text-light);margin-top:8px;text-align:right">
+        最後匯入：${items[0]?.imported_at?.slice(0,16).replace('T',' ') || '—'}（UTC）
+      </div>`;
+  } catch(e) {
+    area.innerHTML = `<div class="empty-state">載入失敗：${e.message}</div>`;
+  }
+}
+
 async function loadWeeklyReview() {
   try {
     const r = await fetch(API + '/api/v1/review/weekly/latest');
@@ -1307,7 +1485,7 @@ async function refreshAll() {
   await Promise.all([
     loadSignals(), loadPerformance(), loadPositions(),
     loadWeeklyReview(), loadMarketContext(), loadBlackSwan(), loadWatchlist(),
-    loadEquityCurve(), loadSignalHistory(),
+    loadEquityCurve(), loadSignalHistory(), loadPortfolio(),
   ]);
   const now = new Date();
   document.getElementById('last-update-time').textContent = now.toLocaleTimeString('zh-TW');
