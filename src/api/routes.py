@@ -259,7 +259,9 @@ async def get_watchlist_prices():
     if not symbols:
         return {}
 
-    stop_loss_ratio = 1 - settings.index_stop_loss_pct / 100
+    # index_stop_loss_pct = 0.12 (decimal form = 12%)
+    sl_ratio = 1 - settings.index_stop_loss_pct          # 0.88 = 12% stop loss
+    tp_ratio = 1 + 2 * settings.index_stop_loss_pct      # 1.24 = 24% profit (2:1 R/R)
 
     def _calc_rsi(closes: list, period: int = 14) -> float:
         if len(closes) < period + 1:
@@ -287,6 +289,7 @@ async def get_watchlist_prices():
             if len(hist) < 30:
                 return sym, None
             closes = [float(x) for x in hist["Close"].tolist()]
+            volumes = [float(x) for x in hist["Volume"].tolist()]
             price = closes[-1]
 
             # MA
@@ -312,16 +315,32 @@ async def get_watchlist_prices():
             # 20-day momentum
             mom20 = round((price - closes[-21]) / closes[-21] * 100, 1) if len(closes) >= 21 else 0.0
 
+            # 量能：最新一日 vs 20日均量比
+            avg_vol20 = sum(volumes[-21:-1]) / 20 if len(volumes) >= 21 else volumes[-1]
+            vol_ratio = round(volumes[-1] / avg_vol20, 2) if avg_vol20 > 0 else 1.0
+
+            # 52週位置
+            high52 = round(max(closes[-252:]), 1) if len(closes) >= 52 else round(max(closes), 1)
+            low52 = round(min(closes[-252:]), 1) if len(closes) >= 52 else round(min(closes), 1)
+            range52 = high52 - low52
+            pos52 = round((price - low52) / range52 * 100, 0) if range52 > 0 else 50.0
+
             return sym, {
                 "price": round(price, 1),
-                "stop_loss": round(price * stop_loss_ratio, 1),
+                "stop_loss": round(price * sl_ratio, 1),
+                "profit_target": round(price * tp_ratio, 1),
                 "ma50": ma50,
                 "ma200": ma200,
                 "above_ma200": price > ma200,
+                "above_ma50": price > ma50,
                 "rsi": rsi,
                 "macd_bullish": macd_bullish,
                 "macd_diff": macd_diff,
                 "momentum_20d": mom20,
+                "vol_ratio": vol_ratio,
+                "high52": high52,
+                "low52": low52,
+                "pos52": int(pos52),
             }
         except Exception as e:
             logger.error(f"watchlist prices {sym}: {e}")
