@@ -27,3 +27,10 @@ jobs:
 
       - name: Deploy to Fly.io
         run: flyctl deploy --remote-only --wait-timeout 300
+
+      - name: Ensure worker and scheduler are running
+        # Fly.io does not auto-start non-HTTP process groups after a rolling deploy.
+        # flyctl scale count ensures exactly N machines are in the started state.
+        run: |
+          flyctl scale count worker=1 scheduler=1 -a zerohour-trading-engine --yes
+          echo "✅ worker and scheduler scale count set to 1"
