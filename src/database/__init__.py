@@ -47,5 +47,12 @@ async def drop_db() -> None:
 
 
 def sync_run(coro):
-    """Run an async coroutine from sync code (e.g., Celery tasks)."""
-    return asyncio.run(coro)
+    """Run an async coroutine from sync code (e.g., Celery tasks).
+
+    每次呼叫先 dispose engine pool，避免 asyncio.run() 建新 event loop 後
+    舊 pool 連線仍綁在前一個 loop 導致 'Future attached to a different loop'。
+    """
+    async def _run():
+        await async_engine.dispose()
+        return await coro
+    return asyncio.run(_run())

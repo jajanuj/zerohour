@@ -698,9 +698,9 @@ def check_black_swan():
             if signal.severity in (BlackSwanSeverity.ALERT, BlackSwanSeverity.CRITICAL):
                 try:
                     from .alerts.discord import get_alerter
-                    sync_run(get_alerter().system_error(
-                        task_name=f"黑天鵝偵測 [{signal.severity.value}]",
-                        error="\n".join(signal.triggers),
+                    sync_run(get_alerter().black_swan_alert(
+                        severity=signal.severity.value,
+                        triggers=signal.triggers,
                     ))
                 except Exception as e:
                     logger.warning(f"Discord black swan alert failed: {e}")
@@ -789,13 +789,13 @@ def run_stock_selection():
         ]
         sync_run(save_watchlist(items))
 
-        # Discord 週報
+        # Discord 通知
         try:
             from .alerts.discord import get_alerter
             top_symbols = ", ".join(e.symbol for e in entries[:5])
-            sync_run(get_alerter().system_error(
-                task_name="選股 Pipeline 完成",
-                error=f"Watchlist 更新：{len(entries)} 支股票\n前五名：{top_symbols}",
+            sync_run(get_alerter().watchlist_update(
+                count=len(entries),
+                top_symbols=top_symbols,
             ))
         except Exception as e:
             logger.warning(f"Discord watchlist notify failed: {e}")

@@ -198,6 +198,30 @@ class DiscordAlerter:
         }
         return await self._post({"embeds": [embed]})
 
+    async def watchlist_update(self, count: int, top_symbols: str) -> bool:
+        embed = {
+            "title": f"ZeroHour 選股完成 — Watchlist 更新 {count} 支",
+            "color": _COLOR["INFO"],
+            "fields": [
+                {"name": "入選股數", "value": str(count), "inline": True},
+                {"name": "前五名", "value": top_symbols or "—", "inline": False},
+            ],
+            "footer": {"text": "ZeroHour Stock Selection"},
+            "timestamp": datetime.utcnow().isoformat(),
+        }
+        return await self._post({"embeds": [embed]})
+
+    async def black_swan_alert(self, severity: str, triggers: list[str]) -> bool:
+        color = _COLOR["CRITICAL"] if severity == "CRITICAL" else _COLOR["WARNING"]
+        embed = {
+            "title": f"ZeroHour 黑天鵝警報 — [{severity}]",
+            "color": color,
+            "description": "\n".join(f"• {t}" for t in triggers),
+            "footer": {"text": "ZeroHour Black Swan Detector"},
+            "timestamp": datetime.utcnow().isoformat(),
+        }
+        return await self._post({"embeds": [embed]})
+
     async def system_error(self, task_name: str, error: str) -> bool:
         embed = {
             "title": f"ZeroHour 系統錯誤 — {task_name}",
