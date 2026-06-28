@@ -94,7 +94,7 @@ confidence_modifier 說明：
                 headers={"Content-Type": "application/json"},
                 json={
                     "contents": [{"parts": [{"text": prompt}]}],
-                    "generationConfig": {"maxOutputTokens": 600},
+                    "generationConfig": {"maxOutputTokens": 2048},
                 },
             )
             resp.raise_for_status()

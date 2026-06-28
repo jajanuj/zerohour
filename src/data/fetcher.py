@@ -47,7 +47,7 @@ class USMarketFetcher:
 
         return {
             "symbol": ticker_code,
-            "date": hist.index[-1].to_pydatetime(),
+            "date": hist.index[-1].to_pydatetime().replace(tzinfo=None),
             "close": float(latest["Close"]),
             "change_pct": round(change_pct, 4),
             "volume": int(latest["Volume"]),

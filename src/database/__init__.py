@@ -53,6 +53,7 @@ def sync_run(coro):
     舊 pool 連線仍綁在前一個 loop 導致 'Future attached to a different loop'。
     """
     async def _run():
-        await async_engine.dispose()
+        # close=False：只清空 pool，不主動關舊連線（舊連線綁舊 loop，關閉會報錯）
+        await async_engine.dispose(close=False)
         return await coro
     return asyncio.run(_run())

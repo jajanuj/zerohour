@@ -751,7 +751,11 @@ async function loadMarketContext() {
     const r = await fetch(API + '/api/v1/agents/market-context/latest');
     if (!r.ok) return;
     const d = await r.json();
-    if (!d) return;
+    if (!d) {
+      document.getElementById('ctx-relevance').textContent = '無資料';
+      document.getElementById('ctx-relevance').className = 'badge badge-gray';
+      return;
+    }
 
     document.getElementById('ctx-driver').textContent = d.market_driver || '—';
     const relMap = { HIGH: { cls: 'badge-buy', label: 'HIGH 高度相關' }, MEDIUM: { cls: 'badge-hold', label: 'MEDIUM 中度相關' }, LOW: { cls: 'badge-gray', label: 'LOW 低度相關' } };
