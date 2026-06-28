@@ -840,8 +840,9 @@ async function loadWatchlist() {
       <table class="pos-table">
         <thead><tr>
           <th>代號</th><th class="right">分數</th><th>推薦</th>
-          <th class="right">目前股價<br><span style="font-weight:400;font-size:10px">止損參考</span></th>
-          <th>論點</th><th>進場條件</th>
+          <th class="right">股價 / 止損</th>
+          <th>技術訊號</th>
+          <th>論點 / 財報日</th>
         </tr></thead>
         <tbody id="watchlist-tbody">
           ${items.map(w => {
@@ -850,31 +851,64 @@ async function loadWatchlist() {
             const techScore = ar.technical ? ar.technical.score : '—';
             const fundScore = ar.fundamental ? ar.fundamental.score : '—';
             const name = TW_NAMES[w.symbol] || '';
+            const earningsDate = ar.catalyst && ar.catalyst.earnings_date ? ar.catalyst.earnings_date.slice(0,10) : null;
+            const hasSoon = ar.catalyst && ar.catalyst.has_earnings_soon;
+            const earningsHtml = earningsDate
+              ? `<div style="font-size:10px;color:${hasSoon ? 'var(--yellow)' : 'var(--text-light)'}">財報日：${earningsDate}${hasSoon ? ' ⚠' : ''}</div>`
+              : '';
             return `<tr data-symbol="${w.symbol}">
               <td><strong>${w.symbol}</strong>
                 <div style="font-size:11px;color:var(--text-muted)">${name}</div>
                 <div style="font-size:10px;color:var(--text-light)">技術${techScore}/基本面${fundScore}</div>
               </td>
-              <td class="right"><strong>${w.overall_score}</strong></td>
-              <td><span class="badge ${cls}">${label}</span></td>
               <td class="right" id="price-${w.symbol.replace('.','_')}">
                 <span style="color:var(--text-muted);font-size:11px">抓取中…</span>
               </td>
-              <td style="font-size:12px;color:var(--text-muted);max-width:200px">${w.thesis || '—'}</td>
-              <td style="font-size:12px;color:var(--text-muted)">${w.entry_condition || '—'}</td>
+              <td><span class="badge ${cls}">${label}</span></td>
+              <td id="tech-${w.symbol.replace('.','_')}" style="font-size:11px;line-height:1.8;min-width:130px">
+                <span style="color:var(--text-muted)">計算中…</span>
+              </td>
+              <td style="font-size:12px;color:var(--text-muted);max-width:200px">
+                ${w.thesis || '—'}
+                ${earningsHtml}
+              </td>
             </tr>`;
           }).join('')}
         </tbody>
       </table>
       <div style="font-size:11px;color:var(--text-light);margin-top:8px;text-align:right">最後更新：${genLabel}（台北時間）</div>`;
 
-    // 非同步抓取股價
+    // 非同步抓取技術指標
     fetch(API + '/api/v1/watchlist/prices').then(r => r.json()).then(prices => {
-      for (const [sym, data] of Object.entries(prices)) {
-        const el = document.getElementById('price-' + sym.replace('.','_'));
-        if (!el || !data) continue;
-        el.innerHTML = `<span style="font-size:14px;font-weight:600">NT$${data.price}</span>
-          <div style="font-size:10px;color:var(--red)">止損 NT$${data.stop_loss}</div>`;
+      for (const [sym, d] of Object.entries(prices)) {
+        if (!d) continue;
+        const key = sym.replace('.','_');
+
+        // 股價 + 止損欄
+        const prEl = document.getElementById('price-' + key);
+        if (prEl) {
+          const pctVsMA200 = d.ma200 ? ((d.price - d.ma200) / d.ma200 * 100).toFixed(1) : null;
+          prEl.innerHTML = `<span style="font-size:14px;font-weight:600">NT$${d.price}</span>
+            <div style="font-size:10px;color:var(--red)">止損 NT$${d.stop_loss}</div>`;
+        }
+
+        // 技術訊號欄
+        const techEl = document.getElementById('tech-' + key);
+        if (techEl) {
+          const ma200color = d.above_ma200 ? 'var(--green)' : 'var(--red)';
+          const ma200arrow = d.above_ma200 ? '▲' : '▼';
+          const pctVsMA200 = d.ma200 ? ((d.price - d.ma200) / d.ma200 * 100).toFixed(1) : '—';
+          const rsiColor = d.rsi >= 70 ? 'var(--red)' : d.rsi <= 30 ? 'var(--green)' : d.rsi >= 50 ? 'var(--green)' : 'var(--yellow)';
+          const rsiLabel = d.rsi >= 70 ? '過熱' : d.rsi <= 30 ? '超賣' : d.rsi >= 40 ? '健康' : '偏弱';
+          const macdColor = d.macd_bullish ? 'var(--green)' : 'var(--red)';
+          const macdLabel = d.macd_bullish ? '多頭' : '空頭';
+          const momColor = d.momentum_20d >= 0 ? 'var(--green)' : 'var(--red)';
+          techEl.innerHTML =
+            `<span style="color:${ma200color}">${ma200arrow} MA200 NT$${d.ma200} (${pctVsMA200}%)</span><br>` +
+            `<span style="color:${rsiColor}">RSI ${d.rsi} ${rsiLabel}</span><br>` +
+            `<span style="color:${macdColor}">MACD ${macdLabel} ${d.macd_diff >= 0 ? '+' : ''}${d.macd_diff}</span><br>` +
+            `<span style="color:${momColor}">動能20d ${d.momentum_20d >= 0 ? '+' : ''}${d.momentum_20d}%</span>`;
+        }
       }
     }).catch(() => {});
   } catch(e) {

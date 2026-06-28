@@ -249,7 +249,7 @@ async def get_watchlist():
 
 @router.get("/watchlist/prices")
 async def get_watchlist_prices():
-    """即時抓取 Watchlist 各股目前股價與止損參考價。"""
+    """即時抓取 Watchlist 各股技術指標：股價、止損、MA200、RSI、MACD。"""
     import asyncio as _aio
     from concurrent.futures import ThreadPoolExecutor
     from ..database.helpers import get_watchlist
@@ -261,15 +261,70 @@ async def get_watchlist_prices():
 
     stop_loss_ratio = 1 - settings.index_stop_loss_pct / 100
 
+    def _calc_rsi(closes: list, period: int = 14) -> float:
+        if len(closes) < period + 1:
+            return 50.0
+        deltas = [closes[i] - closes[i - 1] for i in range(1, len(closes))]
+        gains = [d if d > 0 else 0 for d in deltas[-period:]]
+        losses = [-d if d < 0 else 0 for d in deltas[-period:]]
+        avg_g = sum(gains) / period
+        avg_l = sum(losses) / period
+        return 100.0 if avg_l == 0 else round(100 - (100 / (1 + avg_g / avg_l)), 1)
+
+    def _calc_ema(prices: list, period: int) -> list:
+        if len(prices) < period:
+            return []
+        k = 2 / (period + 1)
+        ema = [sum(prices[:period]) / period]
+        for p in prices[period:]:
+            ema.append(p * k + ema[-1] * (1 - k))
+        return ema
+
     def _fetch_one(sym: str):
         try:
             import yfinance as _yf
-            hist = _yf.Ticker(sym).history(period="3d").dropna(subset=["Close"])
-            if hist.empty:
+            hist = _yf.Ticker(sym).history(period="1y").dropna(subset=["Close"])
+            if len(hist) < 30:
                 return sym, None
-            price = round(float(hist.iloc[-1]["Close"]), 1)
-            return sym, {"price": price, "stop_loss": round(price * stop_loss_ratio, 1)}
-        except Exception:
+            closes = [float(x) for x in hist["Close"].tolist()]
+            price = closes[-1]
+
+            # MA
+            ma50 = round(sum(closes[-50:]) / min(50, len(closes)), 1)
+            ma200 = round(sum(closes[-200:]) / min(200, len(closes)), 1)
+
+            # RSI (14-day)
+            rsi = _calc_rsi(closes[-30:])
+
+            # MACD
+            ema12 = _calc_ema(closes, 12)
+            ema26 = _calc_ema(closes, 26)
+            macd_bullish = False
+            macd_diff = 0.0
+            if len(ema12) >= len(ema26) >= 9:
+                offset = len(ema12) - len(ema26)
+                macd_line = [ema12[i + offset] - ema26[i] for i in range(len(ema26))]
+                sig_line = _calc_ema(macd_line, 9)
+                if sig_line:
+                    macd_diff = round(macd_line[-1] - sig_line[-1], 2)
+                    macd_bullish = macd_diff > 0
+
+            # 20-day momentum
+            mom20 = round((price - closes[-21]) / closes[-21] * 100, 1) if len(closes) >= 21 else 0.0
+
+            return sym, {
+                "price": round(price, 1),
+                "stop_loss": round(price * stop_loss_ratio, 1),
+                "ma50": ma50,
+                "ma200": ma200,
+                "above_ma200": price > ma200,
+                "rsi": rsi,
+                "macd_bullish": macd_bullish,
+                "macd_diff": macd_diff,
+                "momentum_20d": mom20,
+            }
+        except Exception as e:
+            logger.error(f"watchlist prices {sym}: {e}")
             return sym, None
 
     loop = _aio.get_running_loop()
