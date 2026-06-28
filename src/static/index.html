@@ -809,6 +809,27 @@ async function loadBlackSwan() {
   }
 }
 
+// 部位計算器：全域儲存載入的 prices，input 變動時重算
+let _wlPrices = {};
+function _updatePositionSizes() {
+  const capital = parseFloat(document.getElementById('calc-capital')?.value) || 0;
+  const riskPct = parseFloat(document.getElementById('calc-risk-pct')?.value) || 2;
+  const riskAmount = capital * riskPct / 100;
+  const riskEl = document.getElementById('calc-risk-amount');
+  if (riskEl) riskEl.textContent = 'NT$' + Math.round(riskAmount).toLocaleString();
+  for (const [sym, d] of Object.entries(_wlPrices)) {
+    if (!d) continue;
+    const riskPerShare = d.price - d.stop_loss;
+    if (riskPerShare <= 0) continue;
+    const shares = Math.floor(riskAmount / riskPerShare);
+    const posVal = shares * d.price;
+    const el = document.getElementById('pos-' + sym.replace('.', '_'));
+    if (el) el.innerHTML = shares > 0
+      ? `📦 建議 <strong>${shares}</strong> 股 ≈ NT$${Math.round(posVal).toLocaleString()}`
+      : `<span style="color:var(--text-muted)">資金不足</span>`;
+  }
+}
+
 async function loadWatchlist() {
   const TW_NAMES = {
     '2330.TW':'台積電','2454.TW':'聯發科','2317.TW':'鴻海','2303.TW':'聯電',
@@ -836,30 +857,49 @@ async function loadWatchlist() {
     const genAt = items[0]?.generated_at || '';
     const genLabel = genAt ? genAt.slice(0,10) + ' ' + genAt.slice(11,16) : '—';
 
-    // 判讀說明區塊
+    // 判讀說明 + 部位計算器
     const legendHtml = `
-      <div style="background:rgba(255,255,255,0.04);border:1px solid var(--border);border-radius:6px;padding:10px 14px;margin-bottom:14px;font-size:11px;color:var(--text-muted);line-height:1.9">
+      <div style="background:rgba(255,255,255,0.04);border:1px solid var(--border);border-radius:6px;padding:10px 14px;margin-bottom:10px;font-size:11px;color:var(--text-muted);line-height:1.9">
         <strong style="color:var(--text);font-size:12px">📖 判讀說明</strong>
-        <div style="margin-top:6px;display:grid;grid-template-columns:1fr 1fr;gap:2px 24px">
-          <span>📍 <strong>MA200</strong>：200日均線支撐價；▲站上=多頭，▼跌破=空頭，% = 偏離幅度</span>
-          <span>📊 <strong>MA50</strong>：站上MA50且MA50&gt;MA200 = 完美多頭排列</span>
-          <span>🔢 <strong>RSI</strong>：40-60健康；&gt;70過熱（追高風險）；&lt;30超賣（反彈機會）</span>
-          <span>📈 <strong>MACD</strong>：差值 &gt;0=多頭動能，&lt;0=空頭動能；數值越大動能越強</span>
-          <span>📦 <strong>量能比</strong>：當日量/20日均量；&gt;1.5=量增，&gt;2.0=爆量異常</span>
-          <span>📅 <strong>52週位置</strong>：0%=年低，100%=年高；70%以上為強勢區</span>
-          <span>🎯 <strong>獲利目標</strong>：風險報酬 2:1（止損12%→獲利目標24%）</span>
-          <span>⚠ <strong>財報日</strong>：財報前18天內標示黃色警示</span>
+        <div style="margin-top:5px;display:grid;grid-template-columns:1fr 1fr;gap:1px 24px">
+          <span>📍 <strong>MA200</strong>：200日均線；▲站上=多頭，% = 偏離支撐距離</span>
+          <span>📊 <strong>MA50+MA200 完美多頭</strong>：MA50&gt;MA200 且股價站上兩線</span>
+          <span>🔢 <strong>RSI</strong>：40-65最佳買入；&gt;70過熱；&lt;30超賣反彈機會</span>
+          <span>📈 <strong>MACD</strong>：差值&gt;0多頭動能；差值越大動能越強</span>
+          <span>📦 <strong>量能比</strong>：&gt;1.5量增確認；&gt;2.0爆量；&lt;0.7縮量警告</span>
+          <span>📅 <strong>52W位置</strong>：70%+ 強勢區；30%- 低位反彈區</span>
+          <span>🛑 <strong>止損</strong>：進場價 × 88%（固定 12%止損）</span>
+          <span>🎯 <strong>獲利目標</strong>：進場價 × 124%（2:1風報比 = +24%）</span>
         </div>
+      </div>
+      <div style="background:rgba(255,200,0,0.06);border:1px solid rgba(255,200,0,0.2);border-radius:6px;padding:10px 14px;margin-bottom:14px;display:flex;align-items:center;gap:16px;flex-wrap:wrap">
+        <strong style="color:var(--text);font-size:12px;white-space:nowrap">💰 部位計算器</strong>
+        <label style="font-size:11px;color:var(--text-muted);display:flex;align-items:center;gap:4px">
+          總資金 NT$
+          <input id="calc-capital" type="number" value="1000000" min="0" step="100000"
+            style="width:110px;background:var(--card);border:1px solid var(--border);color:var(--text);padding:3px 7px;border-radius:4px;font-size:11px">
+        </label>
+        <label style="font-size:11px;color:var(--text-muted);display:flex;align-items:center;gap:4px">
+          每筆風險
+          <input id="calc-risk-pct" type="number" value="2" min="0.5" max="10" step="0.5"
+            style="width:48px;background:var(--card);border:1px solid var(--border);color:var(--text);padding:3px 7px;border-radius:4px;font-size:11px"> %
+        </label>
+        <span style="font-size:11px;color:var(--text-muted)">
+          → 每筆最大虧損：<strong id="calc-risk-amount" style="color:var(--yellow)">NT$20,000</strong>
+        </span>
+        <span style="font-size:10px;color:var(--text-light)">（建議買入股數自動顯示在各股價格欄）</span>
       </div>`;
 
     area.innerHTML = legendHtml + `
-      <table class="pos-table">
+      <div style="overflow-x:auto">
+      <table class="pos-table" style="min-width:900px">
         <thead><tr>
           <th>代號</th>
           <th class="right">分數</th>
-          <th>推薦</th>
-          <th class="right">股價 / 止損 / 目標</th>
+          <th>推薦 / 進場判斷</th>
+          <th class="right">股價 / 止損 / 目標<br><span style="font-weight:400;font-size:10px">（建議買入量）</span></th>
           <th>技術訊號</th>
+          <th>觸發條件</th>
           <th>論點 / 財報日</th>
         </tr></thead>
         <tbody id="watchlist-tbody">
@@ -873,8 +913,9 @@ async function loadWatchlist() {
               ? String(ar.catalyst.earnings_date).slice(0,10) : null;
             const hasSoon = ar.catalyst && ar.catalyst.has_earnings_soon;
             const earningsHtml = earningsDate
-              ? `<div style="margin-top:4px;font-size:10px;color:${hasSoon ? 'var(--yellow)' : 'var(--text-light)'}">📅 財報：${earningsDate}${hasSoon ? ' ⚠' : ''}</div>`
+              ? `<div style="margin-top:5px;font-size:10px;color:${hasSoon ? 'var(--yellow)' : 'var(--text-light)'}">📅 財報：${earningsDate}${hasSoon ? ' ⚠' : ''}</div>`
               : '';
+            const k = w.symbol.replace('.','_');
             return `<tr data-symbol="${w.symbol}">
               <td>
                 <strong>${w.symbol}</strong>
@@ -882,14 +923,20 @@ async function loadWatchlist() {
                 <div style="font-size:10px;color:var(--text-light)">技術${techScore} / 基本面${fundScore}</div>
               </td>
               <td class="right"><strong style="font-size:15px">${w.overall_score}</strong></td>
-              <td><span class="badge ${cls}">${label}</span></td>
-              <td class="right" id="price-${w.symbol.replace('.','_')}">
+              <td>
+                <span class="badge ${cls}">${label}</span>
+                <div id="trigger-badge-${k}" style="margin-top:5px;font-size:10px;color:var(--text-muted)">判斷中…</div>
+              </td>
+              <td class="right" id="price-${k}">
                 <span style="color:var(--text-muted);font-size:11px">抓取中…</span>
               </td>
-              <td id="tech-${w.symbol.replace('.','_')}" style="font-size:11px;min-width:160px">
+              <td id="tech-${k}" style="font-size:11px;min-width:155px">
                 <span style="color:var(--text-muted)">計算中…</span>
               </td>
-              <td style="font-size:12px;color:var(--text-muted);max-width:220px">
+              <td id="trigger-${k}" style="font-size:10px;min-width:155px">
+                <span style="color:var(--text-muted)">計算中…</span>
+              </td>
+              <td style="font-size:12px;color:var(--text-muted);max-width:200px">
                 <div style="line-height:1.6">${w.thesis || '—'}</div>
                 ${earningsHtml}
               </td>
@@ -897,52 +944,78 @@ async function loadWatchlist() {
           }).join('')}
         </tbody>
       </table>
+      </div>
       <div style="font-size:11px;color:var(--text-light);margin-top:8px;text-align:right">最後更新：${genLabel}（台北時間）</div>`;
 
-    // 非同步抓取技術指標
+    // 計算器 input 事件綁定
+    ['calc-capital','calc-risk-pct'].forEach(id => {
+      document.getElementById(id)?.addEventListener('input', _updatePositionSizes);
+    });
+    _updatePositionSizes();
+
+    // 非同步抓取即時股價 + 技術指標
     fetch(API + '/api/v1/watchlist/prices').then(r => r.json()).then(prices => {
+      _wlPrices = prices;
+
       for (const [sym, d] of Object.entries(prices)) {
         if (!d) continue;
         const key = sym.replace('.','_');
 
-        // 股價 / 止損 / 獲利目標欄
+        // ── 股價 / 止損 / 目標 欄 ──────────────────
         const prEl = document.getElementById('price-' + key);
         if (prEl) {
+          const liveTag = d.is_live
+            ? `<span style="font-size:9px;background:#00cc6633;color:#00cc66;padding:1px 4px;border-radius:3px;vertical-align:middle">即時</span>`
+            : `<span style="font-size:9px;background:rgba(255,255,255,0.08);color:var(--text-light);padding:1px 4px;border-radius:3px;vertical-align:middle">收盤</span>`;
+          const daySign = d.day_change_pct >= 0 ? '+' : '';
+          const dayColor = d.day_change_pct >= 0 ? 'var(--green)' : 'var(--red)';
           prEl.innerHTML =
-            `<span style="font-size:16px;font-weight:700">NT$${d.price}</span>` +
-            `<div style="margin-top:2px;font-size:10px;color:var(--red)">🛑 止損 NT$${d.stop_loss} (−12%)</div>` +
-            `<div style="font-size:10px;color:var(--green)">🎯 目標 NT$${d.profit_target} (+24%)</div>`;
+            `<div style="margin-bottom:2px"><span style="font-size:16px;font-weight:700">NT$${d.price}</span> ${liveTag}</div>` +
+            `<div style="font-size:10px;color:${dayColor};margin-bottom:4px">今日 ${daySign}${d.day_change_pct}%（收 NT$${d.prev_close}）</div>` +
+            `<div style="font-size:10px;color:var(--red)">🛑 止損 NT$${d.stop_loss}（−12%）</div>` +
+            `<div style="font-size:10px;color:var(--green)">🎯 目標 NT$${d.profit_target}（+24%）</div>` +
+            `<div id="pos-${key}" style="margin-top:3px;font-size:10px;color:var(--yellow)">計算中…</div>`;
         }
 
-        // 技術訊號欄 — 每行一個指標，有標籤
+        // ── 技術訊號欄 ──────────────────────────────
         const techEl = document.getElementById('tech-' + key);
         if (techEl) {
           const ma200pct = d.ma200 ? ((d.price - d.ma200) / d.ma200 * 100).toFixed(1) : '—';
-          const ma200color = d.above_ma200 ? 'var(--green)' : 'var(--red)';
-          const ma200arrow = d.above_ma200 ? '▲' : '▼';
-          const ma50color = d.above_ma50 ? 'var(--green)' : 'var(--yellow)';
-
-          const rsiColor = d.rsi >= 70 ? 'var(--red)' : d.rsi <= 30 ? 'var(--green)' : d.rsi >= 40 ? 'var(--green)' : 'var(--yellow)';
-          const rsiLabel = d.rsi >= 70 ? '⚠過熱' : d.rsi <= 30 ? '反彈機會' : d.rsi >= 40 ? '健康' : '偏弱';
-
-          const macdColor = d.macd_bullish ? 'var(--green)' : 'var(--red)';
-          const macdSign = d.macd_diff >= 0 ? '+' : '';
-
-          const volColor = d.vol_ratio >= 2.0 ? 'var(--yellow)' : d.vol_ratio >= 1.5 ? 'var(--green)' : 'var(--text-muted)';
-          const volLabel = d.vol_ratio >= 2.0 ? '爆量' : d.vol_ratio >= 1.5 ? '量增' : '正常';
-
-          const pos52color = d.pos52 >= 70 ? 'var(--green)' : d.pos52 <= 30 ? 'var(--red)' : 'var(--text-muted)';
-
+          const ma200c = d.above_ma200 ? 'var(--green)' : 'var(--red)';
+          const ma50c = d.above_ma50 ? 'var(--green)' : 'var(--yellow)';
+          const rsiC = d.rsi >= 70 ? 'var(--red)' : d.rsi <= 30 ? 'var(--green)' : d.rsi >= 40 ? 'var(--green)' : 'var(--yellow)';
+          const rsiL = d.rsi >= 70 ? '過熱' : d.rsi <= 30 ? '超賣' : d.rsi >= 40 ? '健康' : '偏弱';
+          const macdC = d.macd_bullish ? 'var(--green)' : 'var(--red)';
+          const volC = d.vol_ratio >= 2.0 ? 'var(--yellow)' : d.vol_ratio >= 1.5 ? 'var(--green)' : d.vol_ratio < 0.7 ? 'var(--red)' : 'var(--text-muted)';
+          const pos52C = d.pos52 >= 70 ? 'var(--green)' : d.pos52 <= 30 ? 'var(--red)' : 'var(--text-muted)';
           techEl.innerHTML =
-            `<div style="margin-bottom:3px;color:${ma200color}">📍MA200 NT$${d.ma200} <span style="font-size:10px">${ma200arrow}${ma200pct}%</span></div>` +
-            `<div style="margin-bottom:3px;color:${ma50color}">📊MA50&nbsp; NT$${d.ma50}</div>` +
-            `<div style="margin-bottom:3px;color:${rsiColor}">🔢RSI ${d.rsi} <span style="font-size:10px">${rsiLabel}</span></div>` +
-            `<div style="margin-bottom:3px;color:${macdColor}">📈MACD ${d.macd_bullish ? '多頭' : '空頭'} <span style="font-size:10px">${macdSign}${d.macd_diff}</span></div>` +
-            `<div style="margin-bottom:3px;color:${volColor}">📦量能比 ${d.vol_ratio}x <span style="font-size:10px">${volLabel}</span></div>` +
-            `<div style="color:${pos52color}">📅52W位置 ${d.pos52}%</div>`;
+            `<div style="margin-bottom:4px;color:${ma200c}">📍MA200 NT$${d.ma200} <span style="opacity:.8">${d.above_ma200?'▲':'▼'}${ma200pct}%</span></div>` +
+            `<div style="margin-bottom:4px;color:${ma50c}">📊MA50&nbsp;&nbsp; NT$${d.ma50}</div>` +
+            `<div style="margin-bottom:4px;color:${rsiC}">🔢RSI ${d.rsi} <span style="opacity:.8">${rsiL}</span></div>` +
+            `<div style="margin-bottom:4px;color:${macdC}">📈MACD ${d.macd_bullish?'多頭':'空頭'} <span style="opacity:.8">${d.macd_diff>=0?'+':''}${d.macd_diff}</span></div>` +
+            `<div style="margin-bottom:4px;color:${volC}">📦量能 ${d.vol_ratio}x 均量</div>` +
+            `<div style="color:${pos52C}">📅52W ${d.pos52}% 位置</div>`;
+        }
+
+        // ── 觸發條件欄 ──────────────────────────────
+        const trig = d.trigger;
+        const trigEl = document.getElementById('trigger-' + key);
+        if (trigEl && trig) {
+          trigEl.innerHTML =
+            trig.signals.map(s => `<div style="margin-bottom:3px;line-height:1.4">${s}</div>`).join('') +
+            `<div style="margin-top:6px;font-size:11px;font-weight:600;color:${trig.color}">${trig.action}</div>`;
+        }
+
+        // ── 進場判斷 badge（推薦欄下方）──────────────
+        const trigBadge = document.getElementById('trigger-badge-' + key);
+        if (trigBadge && trig) {
+          trigBadge.innerHTML = `<span style="color:${trig.color};font-weight:600">${trig.action}</span>`;
         }
       }
-    }).catch(() => {});
+
+      // 部位大小計算
+      _updatePositionSizes();
+    }).catch(e => console.warn('watchlist prices failed', e));
   } catch(e) {
     area.innerHTML = `<div class="empty-state">載入失敗：${e.message}</div>`;
     badge.textContent = '錯誤'; badge.className = 'badge badge-sell';

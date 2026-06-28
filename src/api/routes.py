@@ -285,12 +285,29 @@ async def get_watchlist_prices():
     def _fetch_one(sym: str):
         try:
             import yfinance as _yf
-            hist = _yf.Ticker(sym).history(period="1y").dropna(subset=["Close"])
+            tkr = _yf.Ticker(sym)
+            hist = tkr.history(period="1y").dropna(subset=["Close"])
             if len(hist) < 30:
                 return sym, None
             closes = [float(x) for x in hist["Close"].tolist()]
             volumes = [float(x) for x in hist["Volume"].tolist()]
-            price = closes[-1]
+            prev_close = closes[-2] if len(closes) >= 2 else closes[-1]
+
+            # 嘗試取即時盤中價（開市中）
+            try:
+                live = float(tkr.fast_info.last_price or 0)
+                # 合理性驗證：不超過歷史收盤 ±30%
+                if live > 0 and abs(live - closes[-1]) / max(closes[-1], 1) < 0.30:
+                    price = live
+                    is_live = True
+                else:
+                    price = closes[-1]
+                    is_live = False
+            except Exception:
+                price = closes[-1]
+                is_live = False
+
+            day_change_pct = round((price - prev_close) / prev_close * 100, 2) if prev_close > 0 else 0.0
 
             # MA
             ma50 = round(sum(closes[-50:]) / min(50, len(closes)), 1)
@@ -315,18 +332,84 @@ async def get_watchlist_prices():
             # 20-day momentum
             mom20 = round((price - closes[-21]) / closes[-21] * 100, 1) if len(closes) >= 21 else 0.0
 
-            # 量能：最新一日 vs 20日均量比
+            # 量能比
             avg_vol20 = sum(volumes[-21:-1]) / 20 if len(volumes) >= 21 else volumes[-1]
             vol_ratio = round(volumes[-1] / avg_vol20, 2) if avg_vol20 > 0 else 1.0
 
             # 52週位置
-            high52 = round(max(closes[-252:]), 1) if len(closes) >= 52 else round(max(closes), 1)
-            low52 = round(min(closes[-252:]), 1) if len(closes) >= 52 else round(min(closes), 1)
+            n = min(252, len(closes))
+            high52 = round(max(closes[-n:]), 1)
+            low52 = round(min(closes[-n:]), 1)
             range52 = high52 - low52
-            pos52 = round((price - low52) / range52 * 100, 0) if range52 > 0 else 50.0
+            pos52 = int(round((price - low52) / range52 * 100, 0)) if range52 > 0 else 50
+
+            # ── 進場觸發條件 ─────────────────────────────────────
+            trigger_score = 0
+            trigger_signals = []
+
+            # 今日突破 MA50（前日收盤 ≤ 前日MA50，今日站上）
+            if len(closes) >= 52:
+                prev_ma50 = sum(closes[-51:-1]) / 50
+                if closes[-2] <= prev_ma50 and closes[-1] > ma50:
+                    trigger_score += 2
+                    trigger_signals.append("🚀 今日突破 MA50（強力進場信號）")
+
+            # 均線多頭排列
+            if price > ma200 and price > ma50 and ma50 > ma200:
+                trigger_score += 2
+                trigger_signals.append("✅ 完美多頭排列（MA50>MA200 均站上）")
+            elif price > ma200 and price > ma50:
+                trigger_score += 1
+                trigger_signals.append("✅ 站上 MA200 & MA50")
+            elif price > ma200:
+                trigger_score += 1
+                trigger_signals.append("⚡ 站上 MA200，待突破 MA50")
+            else:
+                trigger_signals.append("❌ 跌破 MA200（空頭趨勢，禁止追買）")
+
+            # RSI
+            if 40 <= rsi <= 65:
+                trigger_score += 1
+                trigger_signals.append(f"✅ RSI {rsi} 最佳買入區（40-65）")
+            elif rsi > 70:
+                trigger_score -= 1
+                trigger_signals.append(f"⚠ RSI {rsi} 過熱，避免追高")
+            elif rsi < 30:
+                trigger_score += 1
+                trigger_signals.append(f"✅ RSI {rsi} 超賣，潛在反彈")
+            else:
+                trigger_signals.append(f"🔶 RSI {rsi} 偏弱，等待回升至 40")
+
+            # MACD
+            if macd_bullish:
+                trigger_score += 1
+                trigger_signals.append(f"✅ MACD 多頭（差值 +{macd_diff}）")
+            else:
+                trigger_signals.append(f"❌ MACD 空頭（差值 {macd_diff}）")
+
+            # 量能確認
+            if vol_ratio >= 1.5:
+                trigger_score += 1
+                trigger_signals.append(f"✅ 量增確認（{vol_ratio}x 均量）")
+            elif vol_ratio < 0.7:
+                trigger_signals.append(f"⚠ 成交縮量（{vol_ratio}x），等待放量")
+            else:
+                trigger_signals.append(f"🔶 量能不足（{vol_ratio}x），等待放量確認")
+
+            if trigger_score >= 5:
+                trigger_action, trigger_color = "立即進場", "#00cc66"
+            elif trigger_score >= 3:
+                trigger_action, trigger_color = "等待確認", "#ffcc00"
+            elif trigger_score >= 1:
+                trigger_action, trigger_color = "繼續觀察", "#ff8800"
+            else:
+                trigger_action, trigger_color = "暫勿進場", "#ff4444"
 
             return sym, {
                 "price": round(price, 1),
+                "is_live": is_live,
+                "day_change_pct": day_change_pct,
+                "prev_close": round(prev_close, 1),
                 "stop_loss": round(price * sl_ratio, 1),
                 "profit_target": round(price * tp_ratio, 1),
                 "ma50": ma50,
@@ -340,7 +423,13 @@ async def get_watchlist_prices():
                 "vol_ratio": vol_ratio,
                 "high52": high52,
                 "low52": low52,
-                "pos52": int(pos52),
+                "pos52": pos52,
+                "trigger": {
+                    "action": trigger_action,
+                    "color": trigger_color,
+                    "score": trigger_score,
+                    "signals": trigger_signals,
+                },
             }
         except Exception as e:
             logger.error(f"watchlist prices {sym}: {e}")
