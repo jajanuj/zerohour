@@ -45,6 +45,12 @@ if settings.redis_url.startswith("rediss://"):
     celery_app.conf.broker_use_ssl = {"ssl_cert_reqs": ssl.CERT_NONE}
     celery_app.conf.redis_backend_use_ssl = {"ssl_cert_reqs": ssl.CERT_NONE}
 
+# RedBeat: 排程狀態存 Redis，容器重啟後不遺失（避免 Beat 補跑所有過期任務）
+celery_app.conf.beat_scheduler = "redbeat.RedBeatScheduler"
+celery_app.conf.redbeat_redis_url = settings.redis_url  # 原始 URL，無 ssl_cert_reqs 字串
+if settings.redis_url.startswith("rediss://"):
+    celery_app.conf.redbeat_redis_options = {"ssl_cert_reqs": ssl.CERT_NONE}
+
 celery_app.conf.beat_schedule = {
     # 04:00 美股收盤資料抓取
     "fetch-us-close": {
