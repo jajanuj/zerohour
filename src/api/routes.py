@@ -322,12 +322,13 @@ async def debug_celery():
     def _check_redis():
         import redis as _redis
         import ssl as _ssl
-        s = settings
-        url = s.redis_url
-        if url.startswith("rediss://") and "ssl_cert_reqs" not in url:
-            sep = "&" if "?" in url else "?"
-            url = f"{url}{sep}ssl_cert_reqs=CERT_NONE"
-        r = _redis.from_url(url, ssl_cert_reqs=_ssl.CERT_NONE, decode_responses=True)
+        # 直接用原始 URL（不加 ssl_cert_reqs=CERT_NONE 字串）
+        # redis-py 只接受 ssl.CERT_NONE integer，不接受字串 "CERT_NONE"
+        url = settings.redis_url
+        kwargs: dict = {}
+        if url.startswith("rediss://"):
+            kwargs["ssl_cert_reqs"] = _ssl.CERT_NONE
+        r = _redis.from_url(url, decode_responses=True, **kwargs)
         r.ping()
         queues = {q: r.llen(q) for q in ["celery", "signals", "orders", "alerts"]}
         return {
