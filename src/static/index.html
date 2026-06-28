@@ -1091,21 +1091,31 @@ async function runCompare() {
 // ─── Manual Trigger ───────────────────────────────────────────────
 async function triggerTask(taskName) {
   const result = document.getElementById('trigger-result');
-  result.style.display = 'none';
+  if (!result) { console.error('trigger-result element not found'); return; }
+
+  result.innerHTML = `<span style="opacity:.6">⏳ 傳送中...</span>`;
+  result.className = 'trigger-result trigger-ok';
+  result.style.display = '';
+
+  console.log('[trigger] POST', taskName);
   try {
-    const r = await fetch(API + `/api/v1/tasks/${taskName}`, { method: 'POST' });
+    const r = await fetch(API + `/api/v1/tasks/${taskName}`, {
+      method: 'POST',
+      headers: { 'Accept': 'application/json' },
+    });
+    console.log('[trigger] response status:', r.status);
     const d = await r.json();
-    result.textContent = d.status === 'queued'
-      ? `✅ ${taskName} 已加入佇列，約 5-30 秒後執行完畢`
-      : `❌ ${d.message}`;
-    result.className = 'trigger-result ' + (d.status === 'queued' ? 'trigger-ok' : 'trigger-err');
-    result.style.display = '';
-    setTimeout(() => { result.style.display = 'none'; }, 8000);
+    console.log('[trigger] response body:', d);
+
+    const isOk = d.status === 'queued' || d.status === 'running';
+    result.innerHTML = isOk
+      ? `✅ <strong>${taskName}</strong> — ${d.message || '已排入佇列'}<br><small style="opacity:.7">完成後請手動重整 Dashboard</small> <a href="#" onclick="document.getElementById('trigger-result').style.display='none';return false" style="float:right;opacity:.5;font-size:11px">關閉</a>`
+      : `❌ <strong>錯誤</strong>：${d.message || r.status}<br><small>Task: ${d.task}</small> <a href="#" onclick="document.getElementById('trigger-result').style.display='none';return false" style="float:right;opacity:.5;font-size:11px">關閉</a>`;
+    result.className = 'trigger-result ' + (isOk ? 'trigger-ok' : 'trigger-err');
   } catch(e) {
-    result.textContent = `❌ 請求失敗：${e.message}`;
+    console.error('[trigger] fetch error:', e);
+    result.innerHTML = `❌ 請求失敗：${e.message}<br><small>請確認伺服器是否正常</small> <a href="#" onclick="document.getElementById('trigger-result').style.display='none';return false" style="float:right;opacity:.5;font-size:11px">關閉</a>`;
     result.className = 'trigger-result trigger-err';
-    result.style.display = '';
-    setTimeout(() => { result.style.display = 'none'; }, 8000);
   }
 }
 

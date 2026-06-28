@@ -248,13 +248,51 @@ _ALLOWED_TASKS = {
 
 @router.post("/tasks/{task_name}", response_model=TaskTriggerResponse)
 async def trigger_task(task_name: str):
-    """手動觸發指定 Celery 任務（立即執行）。"""
+    """手動觸發指定 Celery 任務；send_task 在 executor 執行，8 秒 timeout 防止阻塞。"""
+    import asyncio as _aio
     if task_name not in _ALLOWED_TASKS:
         raise HTTPException(status_code=400, detail=f"不允許的任務名稱：{task_name}。允許清單：{sorted(_ALLOWED_TASKS)}")
     try:
         from ..tasks import celery_app
-        celery_app.send_task(f"src.tasks.{task_name}")
-        return TaskTriggerResponse(status="queued", task=task_name, message="任務已加入 Celery 佇列")
+
+        def _send():
+            result = celery_app.send_task(f"src.tasks.{task_name}")
+            return result.id
+
+        loop = _aio.get_running_loop()
+        task_id = await _aio.wait_for(
+            loop.run_in_executor(None, _send),
+            timeout=8.0,
+        )
+        return TaskTriggerResponse(
+            status="queued",
+            task=task_name,
+            message=f"已送出 Celery 佇列，Task ID: {task_id[:12]}",
+        )
+    except _aio.TimeoutError:
+        # Celery/Redis 連不上時，改為直接在背景執行緒跑任務
+        logger.warning(f"Celery timeout for {task_name}, falling back to direct thread execution")
+        try:
+            import threading
+            import importlib as _il
+
+            def _direct():
+                try:
+                    mod = _il.import_module("src.tasks")
+                    getattr(mod, task_name)()
+                    logger.info(f"Direct execution of {task_name} completed")
+                except Exception as ex:
+                    logger.error(f"Direct execution of {task_name} failed: {ex}", exc_info=True)
+
+            t = threading.Thread(target=_direct, daemon=True, name=f"manual-{task_name}")
+            t.start()
+            return TaskTriggerResponse(
+                status="queued",
+                task=task_name,
+                message="Celery 連線超時，任務已改為直接在背景執行緒啟動",
+            )
+        except Exception as e2:
+            return TaskTriggerResponse(status="error", task=task_name, message=str(e2))
     except Exception as e:
         logger.error(f"trigger_task {task_name} error: {e}", exc_info=True)
         return TaskTriggerResponse(status="error", task=task_name, message=str(e))
