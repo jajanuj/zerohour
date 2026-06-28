@@ -250,16 +250,13 @@ _ALLOWED_TASKS = {
 async def trigger_task(task_name: str):
     """手動觸發指定 Celery 任務（立即執行）。"""
     if task_name not in _ALLOWED_TASKS:
-        from fastapi import HTTPException
         raise HTTPException(status_code=400, detail=f"不允許的任務名稱：{task_name}。允許清單：{sorted(_ALLOWED_TASKS)}")
     try:
-        import importlib
-        tasks_module = importlib.import_module("src.tasks")
-        task_fn = getattr(tasks_module, task_name)
-        task_fn.delay()
+        from ..tasks import celery_app
+        celery_app.send_task(f"src.tasks.{task_name}")
         return TaskTriggerResponse(status="queued", task=task_name, message="任務已加入 Celery 佇列")
     except Exception as e:
-        logger.error(f"trigger_task {task_name} error: {e}")
+        logger.error(f"trigger_task {task_name} error: {e}", exc_info=True)
         return TaskTriggerResponse(status="error", task=task_name, message=str(e))
 
 

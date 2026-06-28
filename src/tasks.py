@@ -38,6 +38,8 @@ celery_app.conf.update(
     timezone="Asia/Taipei",
     enable_utc=True,
     task_track_started=True,
+    task_default_queue="celery",
+    task_queues={"celery": {}, "signals": {}, "orders": {}, "alerts": {}},
 )
 
 if settings.redis_url.startswith("rediss://"):
