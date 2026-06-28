@@ -247,6 +247,46 @@ async def get_watchlist():
         return []
 
 
+@router.get("/watchlist/prices")
+async def get_watchlist_prices():
+    """即時抓取 Watchlist 各股目前股價與止損參考價。"""
+    import asyncio as _aio
+    from concurrent.futures import ThreadPoolExecutor
+    from ..database.helpers import get_watchlist
+
+    items = await get_watchlist()
+    symbols = [i["symbol"] for i in items]
+    if not symbols:
+        return {}
+
+    stop_loss_ratio = 1 - settings.index_stop_loss_pct / 100
+
+    def _fetch_one(sym: str):
+        try:
+            import yfinance as _yf
+            hist = _yf.Ticker(sym).history(period="3d").dropna(subset=["Close"])
+            if hist.empty:
+                return sym, None
+            price = round(float(hist.iloc[-1]["Close"]), 1)
+            return sym, {"price": price, "stop_loss": round(price * stop_loss_ratio, 1)}
+        except Exception:
+            return sym, None
+
+    loop = _aio.get_running_loop()
+    with ThreadPoolExecutor(max_workers=8) as pool:
+        futures = [loop.run_in_executor(pool, _fetch_one, s) for s in symbols]
+        results = await _aio.gather(*futures, return_exceptions=True)
+
+    out = {}
+    for r in results:
+        if isinstance(r, Exception):
+            continue
+        sym, data = r
+        if data is not None:
+            out[sym] = data
+    return out
+
+
 _ALLOWED_TASKS = {
     "run_daily_review",
     "run_weekly_review",

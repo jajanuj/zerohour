@@ -327,7 +327,7 @@
       <div class="card-body">
         <div class="sig-label">主要驅動力</div>
         <div id="ctx-driver" style="font-size:13px;color:var(--text);margin-bottom:10px;line-height:1.6">—</div>
-        <div class="grid2" style="gap:12px">
+        <div class="grid2" style="gap:12px;margin-bottom:12px">
           <div>
             <div class="sig-label">台股關聯度</div>
             <div class="sig-value neut" id="ctx-relevance-val">—</div>
@@ -338,6 +338,11 @@
             <div class="sig-value neut" id="ctx-modifier">—</div>
             <div class="sig-sub">−0.20 ～ +0.20</div>
           </div>
+        </div>
+        <div style="border-top:1px solid var(--border);padding-top:10px">
+          <div class="sig-label">📋 今日結論</div>
+          <div id="ctx-summary" style="font-size:12px;color:var(--text);line-height:1.6;margin:4px 0 6px">—</div>
+          <div id="ctx-risks" style="font-size:11px;color:var(--yellow);line-height:1.6"></div>
         </div>
       </div>
     </div>
@@ -768,6 +773,11 @@ async function loadMarketContext() {
     const modEl = document.getElementById('ctx-modifier');
     modEl.textContent = mod != null ? (mod >= 0 ? '+' : '') + mod.toFixed(2) : '—';
     modEl.className = 'sig-value ' + (mod > 0.05 ? 'bull' : mod < -0.05 ? 'bear' : 'neut');
+    document.getElementById('ctx-summary').textContent = d.context_summary || '—';
+    const risks = d.key_risks || [];
+    document.getElementById('ctx-risks').innerHTML = risks.length
+      ? risks.map(r => `⚠ ${r}`).join('<br>')
+      : '';
   } catch(e) {
     console.warn('market context load failed', e);
   }
@@ -800,6 +810,13 @@ async function loadBlackSwan() {
 }
 
 async function loadWatchlist() {
+  const TW_NAMES = {
+    '2330.TW':'台積電','2454.TW':'聯發科','2317.TW':'鴻海','2303.TW':'聯電',
+    '2344.TW':'華邦電','3711.TW':'日月光投控','3008.TW':'大立光','2382.TW':'廣達',
+    '2308.TW':'台達電','2357.TW':'華碩','2379.TW':'瑞昱','3034.TW':'聯詠',
+    '2327.TW':'國巨','2408.TW':'南亞科','2337.TW':'旺宏','2881.TW':'富邦金',
+    '2412.TW':'中華電','2395.TW':'研華','2049.TW':'上銀','4938.TW':'和碩',
+  };
   const area = document.getElementById('watchlist-area');
   const badge = document.getElementById('watchlist-badge');
   try {
@@ -815,32 +832,51 @@ async function loadWatchlist() {
       return;
     }
 
-    const recMap = { STRONG_BUY: ['badge-buy','強力買進'], BUY: ['badge-buy','買進'], WATCH: ['badge-hold','觀察'] };
+    const recMap = { STRONG_BUY:['badge-buy','強力買進'], BUY:['badge-buy','買進'], WATCH:['badge-hold','觀察'] };
+    const genAt = items[0]?.generated_at || '';
+    const genLabel = genAt ? genAt.slice(0,10) + ' ' + genAt.slice(11,16) : '—';
+
     area.innerHTML = `
       <table class="pos-table">
         <thead><tr>
-          <th>代號</th><th class="right">綜合分數</th><th>推薦</th>
+          <th>代號</th><th class="right">分數</th><th>推薦</th>
+          <th class="right">目前股價<br><span style="font-weight:400;font-size:10px">止損參考</span></th>
           <th>論點</th><th>進場條件</th>
         </tr></thead>
-        <tbody>
+        <tbody id="watchlist-tbody">
           ${items.map(w => {
             const [cls, label] = recMap[w.recommendation] || ['badge-gray', w.recommendation];
             const ar = w.agent_results || {};
             const techScore = ar.technical ? ar.technical.score : '—';
             const fundScore = ar.fundamental ? ar.fundamental.score : '—';
-            return `<tr>
+            const name = TW_NAMES[w.symbol] || '';
+            return `<tr data-symbol="${w.symbol}">
               <td><strong>${w.symbol}</strong>
-                <div style="font-size:11px;color:var(--text-muted)">技術 ${techScore} / 基本面 ${fundScore}</div>
+                <div style="font-size:11px;color:var(--text-muted)">${name}</div>
+                <div style="font-size:10px;color:var(--text-light)">技術${techScore}/基本面${fundScore}</div>
               </td>
               <td class="right"><strong>${w.overall_score}</strong></td>
               <td><span class="badge ${cls}">${label}</span></td>
-              <td style="font-size:12px;color:var(--text-muted);max-width:220px">${w.thesis || '—'}</td>
+              <td class="right" id="price-${w.symbol.replace('.','_')}">
+                <span style="color:var(--text-muted);font-size:11px">抓取中…</span>
+              </td>
+              <td style="font-size:12px;color:var(--text-muted);max-width:200px">${w.thesis || '—'}</td>
               <td style="font-size:12px;color:var(--text-muted)">${w.entry_condition || '—'}</td>
             </tr>`;
           }).join('')}
         </tbody>
       </table>
-      <div style="font-size:11px;color:var(--text-light);margin-top:8px;text-align:right">最後更新：${items[0]?.generated_at?.slice(0,10) || '—'}</div>`;
+      <div style="font-size:11px;color:var(--text-light);margin-top:8px;text-align:right">最後更新：${genLabel}（台北時間）</div>`;
+
+    // 非同步抓取股價
+    fetch(API + '/api/v1/watchlist/prices').then(r => r.json()).then(prices => {
+      for (const [sym, data] of Object.entries(prices)) {
+        const el = document.getElementById('price-' + sym.replace('.','_'));
+        if (!el || !data) continue;
+        el.innerHTML = `<span style="font-size:14px;font-weight:600">NT$${data.price}</span>
+          <div style="font-size:10px;color:var(--red)">止損 NT$${data.stop_loss}</div>`;
+      }
+    }).catch(() => {});
   } catch(e) {
     area.innerHTML = `<div class="empty-state">載入失敗：${e.message}</div>`;
     badge.textContent = '錯誤'; badge.className = 'badge badge-sell';
