@@ -481,44 +481,68 @@ _TW_NAME_TO_SYMBOL: dict[str, str] = {
 }
 
 
+_US_ETF_SYMBOLS = {
+    "VOO","VTI","VT","SPY","QQQ","TQQQ","IWM","GLD","TLT","AGG",
+    "SCHD","JEPI","JEPQ","QQQM","SQQQ","ARKK","XLK","XLF","XLE",
+    "VNQ","VEA","VWO","BNDX","BND","IAU","GLDM",
+}
+
+
 @router.post("/portfolio/import")
 async def import_portfolio_csv(file: UploadFile):
-    """解析國泰世華「未實現彙總 CSV」，全量覆蓋持倉資料。"""
+    """解析國泰世華 CSV（台股或複委託），自動偵測格式，按市場分開覆蓋。"""
     import io, csv
     from datetime import datetime as _dt
     from ..database.helpers import save_portfolio_positions
 
     content = await file.read()
-    # 國泰世華 CSV 可能有 BOM，用 utf-8-sig 解碼
     try:
-        text = content.decode("utf-8-sig")
+        raw_text = content.decode("utf-8-sig")
     except UnicodeDecodeError:
-        text = content.decode("big5", errors="replace")
+        raw_text = content.decode("big5", errors="replace")
 
-    reader = csv.DictReader(io.StringIO(text))
+    reader = csv.DictReader(io.StringIO(raw_text))
+    fieldnames = reader.fieldnames or []
+
+    # ── 自動偵測格式 ──────────────────────────────────────────────────
+    is_us_format = "代號" in fieldnames  # 複委託 CSV 有「代號」欄
+    market = "US" if is_us_format else "TW"
     positions = []
     unmapped = []
     now = _dt.utcnow()
 
     for row in reader:
-        name = (row.get("股票名稱") or "").strip()
-        # 跳過空行和彙總行（國泰底部有「總預估損益」等合計列）
-        if not name or name.startswith("總"):
-            continue
-
-        try:
-            shares = int(float((row.get("股數") or "0").replace(",", "")))
-            avg_cost = float((row.get("成交均價") or "0").replace(",", ""))
-        except (ValueError, AttributeError):
-            continue
+        if is_us_format:
+            # ── 複委託（美股）格式 ───────────────────────────────────
+            symbol = (row.get("代號") or "").strip().upper()
+            name = (row.get("股票名稱") or symbol).strip()
+            if not symbol or symbol.startswith("總"):
+                continue
+            try:
+                shares = float((row.get("目前庫存") or "0").replace(",", ""))
+                avg_cost = float((row.get("均價") or "0").replace(",", ""))
+            except (ValueError, AttributeError):
+                continue
+            is_etf = symbol in _US_ETF_SYMBOLS
+            currency = "USD"
+        else:
+            # ── 台股格式 ────────────────────────────────────────────
+            name = (row.get("股票名稱") or "").strip()
+            if not name or name.startswith("總"):
+                continue
+            try:
+                shares = float((row.get("股數") or "0").replace(",", ""))
+                avg_cost = float((row.get("成交均價") or "0").replace(",", ""))
+            except (ValueError, AttributeError):
+                continue
+            symbol = _TW_NAME_TO_SYMBOL.get(name)
+            if not symbol:
+                unmapped.append(name)
+            is_etf = bool(symbol and symbol.startswith("0"))
+            currency = "TWD"
 
         if shares <= 0 or avg_cost <= 0:
             continue
-
-        symbol = _TW_NAME_TO_SYMBOL.get(name)
-        if not symbol:
-            unmapped.append(name)
-        is_etf = bool(symbol and symbol.startswith("0"))
 
         positions.append({
             "symbol": symbol,
@@ -526,30 +550,34 @@ async def import_portfolio_csv(file: UploadFile):
             "shares": shares,
             "avg_cost": avg_cost,
             "is_etf": is_etf,
+            "currency": currency,
+            "market": market,
             "imported_at": now,
         })
 
-    count = await save_portfolio_positions(positions)
+    count = await save_portfolio_positions(positions, market)
+    market_label = "美股複委託" if is_us_format else "台股"
     return {
         "imported": count,
+        "market": market,
         "unmapped": unmapped,
         "message": (
-            f"成功匯入 {count} 筆持倉"
-            + (f"，以下 {len(unmapped)} 支未識別代號（仍匯入，股價顯示 N/A）：{', '.join(unmapped)}" if unmapped else "")
+            f"【{market_label}】成功匯入 {count} 筆"
+            + (f"，未識別代號（仍匯入）：{', '.join(unmapped)}" if unmapped else "")
         ),
     }
 
 
 @router.get("/portfolio")
 async def get_portfolio():
-    """取得持倉列表，附帶即時股價、損益、止損狀態。"""
+    """取得持倉列表，附帶即時股價、損益、止損狀態；含 USD/TWD 匯率換算。"""
     import asyncio as _aio
     from concurrent.futures import ThreadPoolExecutor
     from ..database.helpers import get_portfolio_positions
 
     positions = await get_portfolio_positions()
     if not positions:
-        return []
+        return {"items": [], "usd_twd_rate": None}
 
     sl_pct = settings.index_stop_loss_pct  # 0.12
 
@@ -564,19 +592,28 @@ async def get_portfolio():
             if live <= 0:
                 hist = tkr.history(period="3d").dropna(subset=["Close"])
                 live = float(hist.iloc[-1]["Close"]) if not hist.empty else 0.0
-            return sym, round(live, 2)
+            return sym, round(live, 4)
         except Exception as e:
             logger.warning(f"portfolio price {sym}: {e}")
             return sym, None
 
-    # 只抓有效代號的股票
+    def _fetch_usd_twd():
+        try:
+            import yfinance as _yf
+            hist = _yf.Ticker("USDTWD=X").history(period="3d").dropna(subset=["Close"])
+            return round(float(hist.iloc[-1]["Close"]), 2) if not hist.empty else None
+        except Exception:
+            return None
+
     valid_syms = list({p["symbol"] for p in positions if p["symbol"]})
     loop = _aio.get_running_loop()
-    with ThreadPoolExecutor(max_workers=10) as pool:
+    with ThreadPoolExecutor(max_workers=12) as pool:
         futs = [loop.run_in_executor(pool, _fetch_price, s) for s in valid_syms]
+        rate_fut = loop.run_in_executor(pool, _fetch_usd_twd)
         price_results = await _aio.gather(*futs, return_exceptions=True)
+        usd_twd = await rate_fut
 
-    price_map = {}
+    price_map: dict[str, float] = {}
     for r in price_results:
         if isinstance(r, Exception):
             continue
@@ -587,36 +624,41 @@ async def get_portfolio():
     result = []
     for p in positions:
         sym = p["symbol"]
+        currency = p.get("currency", "TWD")
         current = price_map.get(sym) if sym else None
         cost = p["avg_cost"]
         shares = p["shares"]
-        cost_total = round(cost * shares, 0)
-        current_total = round(current * shares, 0) if current else None
-        pnl = round(current_total - cost_total, 0) if current_total is not None else None
+
+        cost_total = round(cost * shares, 2)
+        current_total = round(current * shares, 2) if current is not None else None
+        pnl = round(current_total - cost_total, 2) if current_total is not None else None
         pnl_pct = round((current - cost) / cost * 100, 2) if current else None
-        stop_price = round(cost * (1 - sl_pct), 1) if not p["is_etf"] else None
-        near_stop = (
-            current is not None
-            and stop_price is not None
-            and current <= stop_price * 1.03  # 距止損 3% 以內 = 警告
+        stop_price = round(cost * (1 - sl_pct), 2) if not p["is_etf"] else None
+        near_stop = bool(
+            current is not None and stop_price is not None and current <= stop_price * 1.03
         )
-        below_stop = (
-            current is not None
-            and stop_price is not None
-            and current < stop_price
+        below_stop = bool(
+            current is not None and stop_price is not None and current < stop_price
         )
+        # TWD 等值（USD 持倉用於彙總計算）
+        twd_equiv = None
+        if currency == "USD" and usd_twd and current_total is not None:
+            twd_equiv = round(current_total * usd_twd, 0)
+
         result.append({
             **p,
             "current_price": current,
-            "cost_total": int(cost_total),
-            "current_total": int(current_total) if current_total is not None else None,
-            "pnl": int(pnl) if pnl is not None else None,
+            "cost_total": round(cost_total, 2),
+            "current_total": round(current_total, 2) if current_total is not None else None,
+            "pnl": round(pnl, 2) if pnl is not None else None,
             "pnl_pct": pnl_pct,
             "stop_price": stop_price,
             "near_stop": near_stop,
             "below_stop": below_stop,
+            "twd_equiv": twd_equiv,
         })
-    return result
+
+    return {"items": result, "usd_twd_rate": usd_twd}
 
 
 _ALLOWED_TASKS = {

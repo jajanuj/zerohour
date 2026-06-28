@@ -399,8 +399,9 @@
         <label style="display:flex;align-items:center;gap:8px;font-size:12px;color:var(--text-muted);cursor:pointer">
           <input type="file" id="portfolio-file" accept=".csv" style="display:none">
           <button onclick="document.getElementById('portfolio-file').click()"
+            title="支援：台股「未實現彙總」CSV 或複委託「庫存」CSV（自動偵測，分別更新）"
             style="background:var(--blue);color:#fff;border:none;padding:6px 14px;border-radius:6px;cursor:pointer;font-size:12px">
-            📂 上傳國泰 CSV
+            📂 上傳持倉 CSV
           </button>
           <span id="portfolio-filename" style="color:var(--text-muted)">未選擇檔案</span>
         </label>
@@ -408,7 +409,7 @@
           style="background:var(--green);color:#000;border:none;padding:6px 14px;border-radius:6px;cursor:pointer;font-size:12px;opacity:0.5">
           ✅ 匯入更新
         </button>
-        <span style="font-size:11px;color:var(--text-light)">從國泰世華App → 帳戶 → 未實現損益 → 匯出CSV</span>
+        <span style="font-size:11px;color:var(--text-light)">台股 或 複委託 CSV 皆可（自動識別格式）</span>
       </div>
       <div id="portfolio-msg" style="font-size:11px;color:var(--yellow);margin-bottom:8px"></div>
       <div id="portfolio-summary" style="display:none;margin-bottom:12px;background:rgba(255,255,255,0.03);border-radius:6px;padding:10px 14px">
@@ -1105,7 +1106,10 @@ async function loadPortfolio() {
   try {
     const r = await fetch(API + '/api/v1/portfolio');
     if (!r.ok) throw new Error(r.statusText);
-    const items = await r.json();
+    const resp = await r.json();
+    const items = resp.items || resp; // 相容舊格式
+    const usdTwd = resp.usd_twd_rate || null;
+
     if (!items.length) {
       badge.textContent = '未匯入'; badge.className = 'badge badge-gray';
       area.innerHTML = '<div class="empty-state">上傳 CSV 後顯示持倉資料</div>';
@@ -1113,87 +1117,102 @@ async function loadPortfolio() {
       return;
     }
 
-    // 彙總計算
     const alerts = items.filter(i => i.below_stop || i.near_stop);
-    badge.textContent = items.length + ' 支股票' + (alerts.length ? ` ⚠${alerts.length}警報` : '');
+    const twItems = items.filter(i => i.market === 'TW');
+    const usItems = items.filter(i => i.market === 'US');
+
+    badge.textContent = `台股 ${twItems.length} / 美股 ${usItems.length}` + (alerts.length ? ` ⚠${alerts.length}警報` : '');
     badge.className = 'badge ' + (alerts.length ? 'badge-sell' : 'badge-ok');
 
-    const totalValue = items.reduce((s, i) => s + (i.current_total || i.cost_total || 0), 0);
-    const totalPnl = items.reduce((s, i) => s + (i.pnl || 0), 0);
-    const totalPnlPct = items.reduce((s, i) => s + (i.cost_total || 0), 0);
-    // 最大止損風險：只計算個股（非ETF）距止損尚未觸及的損失
+    // 彙總（台股 TWD，美股先算 USD 再換算）
+    const twValue = twItems.reduce((s,i) => s + (i.current_total || i.cost_total || 0), 0);
+    const twPnl   = twItems.reduce((s,i) => s + (i.pnl || 0), 0);
+    const twCost  = twItems.reduce((s,i) => s + (i.cost_total || 0), 0);
+    const usValueUSD = usItems.reduce((s,i) => s + (i.current_total || i.cost_total || 0), 0);
+    const usPnlUSD   = usItems.reduce((s,i) => s + (i.pnl || 0), 0);
+    const usValueTWD = usdTwd ? usValueUSD * usdTwd : null;
     const maxRisk = items
-      .filter(i => !i.is_etf && i.stop_price && i.current_price && i.current_price > i.stop_price)
-      .reduce((s, i) => s + (i.current_price - i.stop_price) * i.shares, 0);
+      .filter(i => !i.is_etf && i.stop_price && i.current_price > i.stop_price)
+      .reduce((s,i) => {
+        const riskUSD = (i.current_price - i.stop_price) * i.shares;
+        return s + (i.currency === 'USD' && usdTwd ? riskUSD * usdTwd : riskUSD);
+      }, 0);
 
     summary.style.display = 'block';
-    const tvEl = document.getElementById('ptf-total-value');
-    tvEl.textContent = 'NT$' + Math.round(totalValue).toLocaleString();
+    document.getElementById('ptf-total-value').textContent =
+      `NT$${Math.round(twValue).toLocaleString()}` +
+      (usValueTWD ? ` + US$${usValueUSD.toFixed(0)}(≈NT$${Math.round(usValueTWD).toLocaleString()})` : usItems.length ? ` + US$${usValueUSD.toFixed(0)}` : '');
     const pnlEl = document.getElementById('ptf-total-pnl');
-    const overallPct = totalPnlPct > 0 ? (totalPnl / totalPnlPct * 100).toFixed(1) : 0;
-    pnlEl.textContent = (totalPnl >= 0 ? '+' : '') + 'NT$' + Math.round(totalPnl).toLocaleString() + ` (${overallPct >= 0 ? '+' : ''}${overallPct}%)`;
-    pnlEl.className = 'sig-value ' + (totalPnl >= 0 ? 'bull' : 'bear');
+    const twPct = twCost > 0 ? (twPnl/twCost*100).toFixed(1) : '—';
+    pnlEl.textContent = `台股 ${twPnl>=0?'+':''}NT$${Math.round(twPnl).toLocaleString()}(${twPnl>=0?'+':''}${twPct}%)` +
+      (usItems.length ? ` / 美股 ${usPnlUSD>=0?'+':''}$${usPnlUSD.toFixed(2)}` : '');
+    pnlEl.className = 'sig-value ' + (twPnl + usPnlUSD >= 0 ? 'bull' : 'bear');
     const riskEl = document.getElementById('ptf-max-risk');
-    riskEl.textContent = maxRisk > 0 ? '−NT$' + Math.round(maxRisk).toLocaleString() : '—';
+    riskEl.textContent = maxRisk > 0 ? `−NT$${Math.round(maxRisk).toLocaleString()}` : '—';
     riskEl.className = 'sig-value ' + (maxRisk > 50000 ? 'bear' : 'neut');
+    if (usdTwd) document.getElementById('ptf-max-risk').title = `匯率 1 USD = NT$${usdTwd}`;
 
-    // 表格
-    const stopLossPct = 12;
-    area.innerHTML = `
-      <div style="overflow-x:auto">
-      <table class="pos-table" style="min-width:800px">
-        <thead><tr>
-          <th>代號 / 名稱</th>
-          <th class="right">持股數</th>
-          <th class="right">成本均價</th>
-          <th class="right">目前股價</th>
-          <th class="right">損益 (報酬率)</th>
-          <th class="right">止損價</th>
-          <th>狀態</th>
-        </tr></thead>
-        <tbody>
-          ${items.map(i => {
-            const pnlColor = (i.pnl || 0) >= 0 ? 'var(--green)' : 'var(--red)';
-            const pnlSign = (i.pnl || 0) >= 0 ? '+' : '';
-            const pnlPctSign = (i.pnl_pct || 0) >= 0 ? '+' : '';
-            let statusHtml = '';
-            if (i.below_stop) {
-              statusHtml = `<span style="color:var(--red);font-weight:600">🚨 已跌破止損！立即處理</span>`;
-            } else if (i.near_stop) {
-              statusHtml = `<span style="color:var(--yellow)">⚠ 接近止損線</span>`;
-            } else if (i.is_etf) {
-              statusHtml = `<span style="color:var(--text-light)">ETF 長期持有</span>`;
-            } else if ((i.pnl_pct || 0) >= 20) {
-              statusHtml = `<span style="color:var(--green)">💰 獲利 ≥20%，考慮部分出場</span>`;
-            } else {
-              statusHtml = `<span style="color:var(--text-muted)">正常持有</span>`;
-            }
-            const sym = i.symbol || '—';
-            const px = i.current_price != null ? 'NT$' + i.current_price : 'N/A';
-            return `<tr style="${i.below_stop ? 'background:rgba(255,60,60,0.08)' : i.near_stop ? 'background:rgba(255,200,0,0.06)' : ''}">
-              <td>
-                <strong>${sym}</strong>
-                <div style="font-size:11px;color:var(--text-muted)">${i.name}</div>
-                ${i.is_etf ? '<div style="font-size:10px;color:var(--text-light)">ETF</div>' : ''}
-              </td>
-              <td class="right">${i.shares.toLocaleString()}</td>
-              <td class="right">NT$${i.avg_cost.toFixed(2)}</td>
-              <td class="right"><strong>${px}</strong></td>
-              <td class="right" style="color:${pnlColor}">
-                ${i.pnl != null ? pnlSign + 'NT$' + Math.abs(i.pnl).toLocaleString() : '—'}
-                <div style="font-size:10px">${i.pnl_pct != null ? pnlPctSign + i.pnl_pct + '%' : ''}</div>
-              </td>
-              <td class="right" style="font-size:11px;color:var(--red)">
-                ${i.stop_price ? 'NT$' + i.stop_price : '—'}
-              </td>
-              <td style="font-size:11px">${statusHtml}</td>
-            </tr>`;
-          }).join('')}
-        </tbody>
-      </table>
+    // 表格渲染函式（台股/美股共用）
+    const renderTable = (list, market) => {
+      if (!list.length) return '';
+      const isUS = market === 'US';
+      const curr = isUS ? 'US$' : 'NT$';
+      return `
+        <div style="font-size:11px;font-weight:600;color:var(--text-muted);margin:10px 0 6px;padding-left:4px">
+          ${isUS ? '🇺🇸 美股複委託（幣別：美元）' + (usdTwd ? ` 匯率 1USD=NT$${usdTwd}` : '') : '🇹🇼 台股'}
+        </div>
+        <table class="pos-table" style="min-width:780px;margin-bottom:16px">
+          <thead><tr>
+            <th>代號 / 名稱</th>
+            <th class="right">持股數</th>
+            <th class="right">成本均價</th>
+            <th class="right">目前股價</th>
+            <th class="right">損益 (報酬率)</th>
+            <th class="right">止損價</th>
+            <th>狀態</th>
+          </tr></thead>
+          <tbody>
+            ${list.map(i => {
+              const pnlC = (i.pnl||0)>=0?'var(--green)':'var(--red)';
+              const s = (v) => v>=0?'+':'';
+              let statusHtml;
+              if (i.below_stop)        statusHtml = `<span style="color:var(--red);font-weight:600">🚨 已跌破止損！立即處理</span>`;
+              else if (i.near_stop)    statusHtml = `<span style="color:var(--yellow)">⚠ 接近止損線（≤3%）</span>`;
+              else if (i.is_etf)       statusHtml = `<span style="color:var(--text-light)">ETF 長期持有</span>`;
+              else if ((i.pnl_pct||0)>=20) statusHtml = `<span style="color:var(--green)">💰 獲利≥20%，考慮部分出場</span>`;
+              else                     statusHtml = `<span style="color:var(--text-muted)">正常持有</span>`;
+              const sharesDisplay = i.shares < 10 ? i.shares.toFixed(5) : Math.round(i.shares).toLocaleString();
+              const twd = (isUS && usdTwd && i.twd_equiv) ? `<div style="font-size:9px;color:var(--text-light)">≈NT$${Math.round(i.twd_equiv).toLocaleString()}</div>` : '';
+              return `<tr style="${i.below_stop?'background:rgba(255,60,60,0.08)':i.near_stop?'background:rgba(255,200,0,0.06)':''}">
+                <td>
+                  <strong>${i.symbol||'—'}</strong>
+                  <div style="font-size:11px;color:var(--text-muted)">${i.name}</div>
+                  ${i.is_etf?'<div style="font-size:10px;color:var(--text-light)">ETF</div>':''}
+                </td>
+                <td class="right">${sharesDisplay}</td>
+                <td class="right">${curr}${i.avg_cost.toFixed(isUS?3:2)}</td>
+                <td class="right"><strong>${i.current_price!=null?curr+i.current_price.toFixed(isUS?2:1):'N/A'}</strong></td>
+                <td class="right" style="color:${pnlC}">
+                  ${i.pnl!=null?s(i.pnl)+curr+Math.abs(i.pnl).toFixed(isUS?2:0):'—'}
+                  <div style="font-size:10px">${i.pnl_pct!=null?s(i.pnl_pct)+i.pnl_pct+'%':''}</div>
+                  ${twd}
+                </td>
+                <td class="right" style="font-size:11px;color:var(--red)">
+                  ${i.stop_price?curr+i.stop_price.toFixed(isUS?2:1):'—'}
+                </td>
+                <td style="font-size:11px">${statusHtml}</td>
+              </tr>`;
+            }).join('')}
+          </tbody>
+        </table>`;
+    };
+
+    const lastImport = items.reduce((latest, i) => i.imported_at > latest ? i.imported_at : latest, '');
+    area.innerHTML = `<div style="overflow-x:auto">
+      ${renderTable(twItems,'TW')}${renderTable(usItems,'US')}
       </div>
-      <div style="font-size:11px;color:var(--text-light);margin-top:8px;text-align:right">
-        最後匯入：${items[0]?.imported_at?.slice(0,16).replace('T',' ') || '—'}（UTC）
+      <div style="font-size:11px;color:var(--text-light);margin-top:4px;text-align:right">
+        最後匯入：${lastImport.slice(0,16).replace('T',' ')||'—'}（UTC）
       </div>`;
   } catch(e) {
     area.innerHTML = `<div class="empty-state">載入失敗：${e.message}</div>`;

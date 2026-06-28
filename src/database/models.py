@@ -234,15 +234,17 @@ class WatchlistItem(Base):
 
 
 class PortfolioPosition(Base):
-    """持倉記錄 — 從券商 CSV 匯入，每次上傳全量覆蓋。"""
+    """持倉記錄 — 從券商 CSV 匯入，按 market 分開覆蓋（TW/US 互不影響）。"""
     __tablename__ = "portfolio_positions"
 
     id = Column(Integer, primary_key=True, autoincrement=True)
-    symbol = Column(String(20), nullable=True)   # yfinance ticker，未識別時為 None
-    name = Column(String(100), nullable=False)   # 中文股票名稱
-    shares = Column(Integer, nullable=False)
-    avg_cost = Column(Numeric(12, 2), nullable=False)
-    is_etf = Column(Boolean, default=False)      # True = ETF，不設止損警報
+    symbol = Column(String(20), nullable=True)       # yfinance ticker
+    name = Column(String(100), nullable=False)
+    shares = Column(Numeric(14, 5), nullable=False)  # 支援複委託碎股（如 2.90585）
+    avg_cost = Column(Numeric(12, 4), nullable=False)
+    is_etf = Column(Boolean, default=False)
+    currency = Column(String(3), default="TWD")       # TWD / USD
+    market = Column(String(5), default="TW")          # TW / US
     imported_at = Column(DateTime, nullable=False, default=datetime.utcnow)
 
 

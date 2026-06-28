@@ -792,11 +792,14 @@ async def get_latest_performance() -> dict | None:
         }
 
 
-async def save_portfolio_positions(positions: list[dict]) -> int:
-    """全量覆蓋持倉資料（每次 CSV 匯入時呼叫）。"""
+async def save_portfolio_positions(positions: list[dict], market: str) -> int:
+    """按 market（TW/US）覆蓋持倉，不影響其他市場的資料。"""
     from sqlalchemy import text
     async with get_session() as session:
-        await session.execute(text("DELETE FROM portfolio_positions"))
+        await session.execute(
+            text("DELETE FROM portfolio_positions WHERE market = :m"),
+            {"m": market},
+        )
         for pos in positions:
             session.add(PortfolioPosition(**pos))
         await session.flush()
@@ -804,19 +807,21 @@ async def save_portfolio_positions(positions: list[dict]) -> int:
 
 
 async def get_portfolio_positions() -> list[dict]:
-    """取得所有持倉。"""
+    """取得所有持倉（TW + US）。"""
     async with get_session() as session:
         result = await session.execute(
-            select(PortfolioPosition).order_by(PortfolioPosition.id)
+            select(PortfolioPosition).order_by(PortfolioPosition.market, PortfolioPosition.id)
         )
         rows = result.scalars().all()
         return [
             {
                 "symbol": r.symbol,
                 "name": r.name,
-                "shares": r.shares,
+                "shares": float(r.shares),
                 "avg_cost": float(r.avg_cost),
                 "is_etf": r.is_etf,
+                "currency": r.currency or "TWD",
+                "market": r.market or "TW",
                 "imported_at": r.imported_at.isoformat() if r.imported_at else None,
             }
             for r in rows

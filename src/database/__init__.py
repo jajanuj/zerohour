@@ -36,8 +36,20 @@ async def get_session() -> AsyncGenerator[AsyncSession, None]:
 
 async def init_db() -> None:
     from .models import Base
+    from sqlalchemy import text
     async with async_engine.begin() as conn:
         await conn.run_sync(Base.metadata.create_all)
+        # portfolio_positions schema migration：支援碎股 + 幣別欄
+        for stmt in [
+            "ALTER TABLE portfolio_positions ALTER COLUMN shares TYPE NUMERIC(14,5) USING shares::numeric",
+            "ALTER TABLE portfolio_positions ALTER COLUMN avg_cost TYPE NUMERIC(12,4) USING avg_cost::numeric",
+            "ALTER TABLE portfolio_positions ADD COLUMN IF NOT EXISTS currency VARCHAR(3) DEFAULT 'TWD'",
+            "ALTER TABLE portfolio_positions ADD COLUMN IF NOT EXISTS market VARCHAR(5) DEFAULT 'TW'",
+        ]:
+            try:
+                await conn.execute(text(stmt))
+            except Exception:
+                pass  # 欄位已是正確型別，或 table 尚未建立（create_all 後即正確）
 
 
 async def drop_db() -> None:
