@@ -48,7 +48,7 @@ async def get_current_signals():
     from ..signals.aggregator import SignalAggregator
 
     try:
-        loop = asyncio.get_event_loop()
+        loop = asyncio.get_running_loop()
 
         fetcher = USMarketFetcher()
         norm = DataNormalizer()
@@ -284,12 +284,13 @@ async def get_signal_history(days: int = 30):
 
 @router.post("/backtest/compare", response_model=BacktestCompareResponse)
 async def run_backtest_compare(request: BacktestCompareRequest):
-    """S1 / S2 / S3 三策略並排回測比較。"""
+    """S1 / S2 / S3 三策略並排回測比較（blocking IO 移至 executor）。"""
+    import asyncio
     from ..backtest.engine import BacktestEngine, BacktestConfig
     from ..data.fetcher import USMarketFetcher, TWMarketFetcher
     from ..data.normalizer import DataNormalizer
 
-    try:
+    def _run_compare():
         fetcher = USMarketFetcher()
         tw_fetcher = TWMarketFetcher()
         normalizer = DataNormalizer()
@@ -305,7 +306,7 @@ async def run_backtest_compare(request: BacktestCompareRequest):
         price_raw = tw_fetcher.get_historical(request.symbol, period="10y")
         price_df = normalizer.normalize_ohlcv(price_raw)
 
-        results = []
+        out = []
         for strat in ["S1", "S2", "S3"]:
             cfg = BacktestConfig(
                 symbol=request.symbol,
@@ -316,17 +317,22 @@ async def run_backtest_compare(request: BacktestCompareRequest):
                 strategy=strat,
             )
             res = BacktestEngine(cfg).run(price_df, us_signals)
-            results.append(StrategyResult(
+            pf = res.profit_factor
+            out.append(StrategyResult(
                 strategy=strat,
                 total_return_pct=res.total_return_pct,
                 annualized_return_pct=res.annualized_return_pct,
                 max_drawdown_pct=res.max_drawdown_pct,
                 sharpe_ratio=res.sharpe_ratio,
-                win_rate=res.win_rate,
+                win_rate=round(res.win_rate * 100, 2),   # 0-1 → 0-100 %
                 total_trades=res.total_trades,
-                profit_factor=res.profit_factor,
+                profit_factor=round(min(pf, 99.99), 2) if pf == pf else 0.0,  # cap inf/nan
             ))
+        return out
 
+    try:
+        loop = asyncio.get_running_loop()
+        results = await loop.run_in_executor(None, _run_compare)
         return BacktestCompareResponse(
             symbol=request.symbol,
             start_date=request.start_date,
@@ -334,18 +340,19 @@ async def run_backtest_compare(request: BacktestCompareRequest):
             results=results,
         )
     except Exception as e:
-        logger.error(f"backtest compare 失敗: {e}")
+        logger.error(f"backtest compare 失敗: {e}", exc_info=True)
         raise HTTPException(status_code=500, detail=str(e))
 
 
 @router.post("/backtest/run", response_model=BacktestResponse)
 async def run_backtest(request: BacktestRequest):
-    """觸發回測任務。"""
+    """觸發回測任務（blocking IO 移至 executor）。"""
+    import asyncio
     from ..backtest.engine import BacktestEngine, BacktestConfig
     from ..data.fetcher import USMarketFetcher, TWMarketFetcher
     from ..data.normalizer import DataNormalizer
 
-    try:
+    def _run():
         config = BacktestConfig(
             symbol=request.symbol,
             start_date=request.start_date,
@@ -353,30 +360,26 @@ async def run_backtest(request: BacktestRequest):
             initial_capital=request.initial_capital,
             nasdaq_threshold=request.nasdaq_threshold,
         )
-
         fetcher = USMarketFetcher()
         tw_fetcher = TWMarketFetcher()
         normalizer = DataNormalizer()
 
-        nasdaq_raw = fetcher.get_historical("nasdaq", period="10y")
-        sp500_raw = fetcher.get_historical("sp500", period="10y")
-        sox_raw = fetcher.get_historical("sox", period="10y")
-
-        nasdaq_df = normalizer.normalize_ohlcv(nasdaq_raw)
+        nasdaq_df = normalizer.normalize_ohlcv(fetcher.get_historical("nasdaq", period="10y"))
         nasdaq_df = normalizer.calculate_change_pct(nasdaq_df)
-        sp500_df = normalizer.normalize_ohlcv(sp500_raw)
+        sp500_df = normalizer.normalize_ohlcv(fetcher.get_historical("sp500", period="10y"))
         sp500_df = normalizer.calculate_change_pct(sp500_df)
-        sox_df = normalizer.normalize_ohlcv(sox_raw)
+        sox_df = normalizer.normalize_ohlcv(fetcher.get_historical("sox", period="10y"))
         sox_df = normalizer.calculate_change_pct(sox_df)
-
         us_signals = normalizer.merge_us_signals(nasdaq_df, sp500_df, sox_df)
 
-        price_raw = tw_fetcher.get_historical("0050", period="10y")
+        price_raw = tw_fetcher.get_historical(request.symbol, period="10y")
         price_df = normalizer.normalize_ohlcv(price_raw)
 
-        engine = BacktestEngine(config)
-        result = engine.run(price_df, us_signals)
+        return BacktestEngine(config).run(price_df, us_signals)
 
+    try:
+        loop = asyncio.get_running_loop()
+        result = await loop.run_in_executor(None, _run)
         return BacktestResponse(
             symbol=request.symbol,
             start_date=request.start_date,
@@ -389,7 +392,6 @@ async def run_backtest(request: BacktestRequest):
             total_trades=result.total_trades,
             profit_factor=result.profit_factor,
         )
-
     except Exception as e:
-        logger.error(f"回測執行失敗: {e}")
+        logger.error(f"回測執行失敗: {e}", exc_info=True)
         raise HTTPException(status_code=500, detail=str(e))

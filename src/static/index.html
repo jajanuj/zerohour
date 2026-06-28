@@ -620,17 +620,23 @@ async function loadSignals() {
     const trend = d.trend;
     const td = d.time_diff;
     const comb = d.combined;
-    const isBull = trend.state === 'ABOVE_MA200';
+
+    if (!trend || !td || !comb) {
+      throw new Error('訊號資料不完整（API 回傳空值）');
+    }
+
+    const isBull = trend.state === 'BULL';
 
     const s1 = document.getElementById('s1-val');
-    s1.textContent = isBull ? '多頭' : '空頭';
-    s1.className = 'sig-value ' + (isBull ? 'bull' : 'bear');
+    s1.textContent = isBull ? '多頭' : trend.state === 'BEAR' ? '空頭' : '未定義';
+    s1.className = 'sig-value ' + (isBull ? 'bull' : trend.state === 'BEAR' ? 'bear' : 'neut');
     document.getElementById('s1-sub').textContent = `QQQ 距 MA200 ${fmt(trend.distance_pct)} ＠ ${(+trend.current_price).toFixed(2)}`;
 
-    const isBullTD = td.direction === 'BULL';
+    const isLong = td.direction === 'LONG';
+    const isShort = td.direction === 'SHORT';
     const s2 = document.getElementById('s2-val');
-    s2.textContent = isBullTD ? '看多' : td.direction === 'BEAR' ? '看空' : '中性';
-    s2.className = 'sig-value ' + (isBullTD ? 'bull' : td.direction === 'BEAR' ? 'bear' : 'neut');
+    s2.textContent = isLong ? '看多' : isShort ? '看空' : '中性';
+    s2.className = 'sig-value ' + (isLong ? 'bull' : isShort ? 'bear' : 'neut');
     document.getElementById('s2-sub').textContent = `信心 ${fmtNum(td.confidence)} | NASDAQ ${fmt(td.nasdaq_change_pct)}`;
 
     const action = comb.final_action;
@@ -1026,14 +1032,23 @@ async function runCompare() {
     const metrics = ['total_return_pct','annualized_return_pct','max_drawdown_pct','sharpe_ratio','win_rate','total_trades','profit_factor'];
     const labels  = ['總回報','年化回報','最大回撤','夏普比率','勝率','交易次數','獲利因子'];
     const higherBetter = [true,true,false,true,true,true,true];
-    const isPct = [true,true,true,false,true,false,false];
+    // Custom cell formatters (win_rate is already *100 from API, profit_factor shows 'x')
+    const cellFmt = [
+      v => (v>=0?'+':'')+v.toFixed(2)+'%',   // total_return_pct
+      v => (v>=0?'+':'')+v.toFixed(2)+'%',   // annualized_return_pct
+      v => v.toFixed(2)+'%',                  // max_drawdown_pct (negative)
+      v => v.toFixed(2),                       // sharpe_ratio
+      v => v.toFixed(1)+'%',                  // win_rate (0-100 from API)
+      v => v,                                  // total_trades
+      v => v.toFixed(2)+'x',                  // profit_factor
+    ];
 
     // Find best/worst per row
     const rows = metrics.map((key, mi) => {
       const vals = results.map(r => r[key]);
       const bestVal = higherBetter[mi] ? Math.max(...vals) : Math.min(...vals);
       const worstVal = higherBetter[mi] ? Math.min(...vals) : Math.max(...vals);
-      return { key, label: labels[mi], pct: isPct[mi], vals, bestVal, worstVal };
+      return { key, label: labels[mi], fmt: cellFmt[mi], vals, bestVal, worstVal };
     });
 
     area.innerHTML = `
@@ -1056,10 +1071,7 @@ async function runCompare() {
                   const isBest  = v === row.bestVal;
                   const isWorst = v === row.worstVal && row.bestVal !== row.worstVal;
                   const cls = isBest ? ' class="best"' : isWorst ? ' class="worst"' : '';
-                  const txt = row.pct
-                    ? (v >= 0 ? '+' : '') + v.toFixed(2) + '%'
-                    : Number.isInteger(v) ? v : v.toFixed(2);
-                  return `<td${cls}>${txt}</td>`;
+                  return `<td${cls}>${row.fmt(v)}</td>`;
                 }).join('')}
               </tr>
             `).join('')}
