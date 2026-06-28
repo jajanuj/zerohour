@@ -354,8 +354,67 @@ async def debug_celery():
         return {"error": "timeout", "diagnosis": "⚠️ Redis 連線超時（5s）"}
     except Exception as e:
         return {"error": str(e), "diagnosis": "⚠️ Redis 連線失敗"}
+
+
+@router.get("/debug/queue")
+async def debug_queue():
+    """查看 Celery 佇列中所有待執行任務的名稱。"""
+    import asyncio as _aio
+    import json as _json
+
+    def _list_tasks():
+        import redis as _redis
+        import ssl as _ssl
+        url = settings.redis_url
+        kwargs: dict = {}
+        if url.startswith("rediss://"):
+            kwargs["ssl_cert_reqs"] = _ssl.CERT_NONE
+        r = _redis.from_url(url, decode_responses=True, **kwargs)
+        raw_list = r.lrange("celery", 0, -1)
+        tasks = []
+        for raw in raw_list:
+            try:
+                msg = _json.loads(raw)
+                name = msg.get("headers", {}).get("task", "unknown")
+                task_id = msg.get("headers", {}).get("id", "")
+                tasks.append({"task": name, "id": task_id[:8]})
+            except Exception:
+                tasks.append({"task": "parse_error", "id": ""})
+        return tasks
+
+    try:
+        loop = _aio.get_running_loop()
+        tasks = await _aio.wait_for(loop.run_in_executor(None, _list_tasks), timeout=5.0)
+        from collections import Counter
+        summary = dict(Counter(t["task"] for t in tasks))
+        return {"total": len(tasks), "summary": summary, "tasks": tasks}
     except Exception as e:
-        return {"error": str(e), "diagnosis": "⚠️ 發生例外"}
+        return {"error": str(e)}
+
+
+@router.post("/debug/queue/clear")
+async def clear_queue():
+    """清除 Celery 佇列中所有待執行任務（不影響正在執行的任務）。"""
+    import asyncio as _aio
+
+    def _clear():
+        import redis as _redis
+        import ssl as _ssl
+        url = settings.redis_url
+        kwargs: dict = {}
+        if url.startswith("rediss://"):
+            kwargs["ssl_cert_reqs"] = _ssl.CERT_NONE
+        r = _redis.from_url(url, decode_responses=True, **kwargs)
+        count = r.llen("celery")
+        r.delete("celery")
+        return count
+
+    try:
+        loop = _aio.get_running_loop()
+        cleared = await _aio.wait_for(loop.run_in_executor(None, _clear), timeout=5.0)
+        return {"status": "ok", "cleared": cleared, "message": f"已清除 {cleared} 個待執行任務（正在執行的任務不受影響）"}
+    except Exception as e:
+        return {"error": str(e)}
 
 
 @router.get("/performance/history", response_model=list[PerformanceHistoryItem])
