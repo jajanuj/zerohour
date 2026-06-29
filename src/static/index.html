@@ -1103,9 +1103,10 @@ async function loadPortfolio() {
   const area = document.getElementById('portfolio-area');
   const badge = document.getElementById('portfolio-badge');
   const summary = document.getElementById('portfolio-summary');
+  area.innerHTML = '<div class="empty-state" style="color:var(--text-muted)">📈 讀取股價中，首次載入最多需 25 秒...</div>';
   try {
     const r = await fetch(API + '/api/v1/portfolio');
-    if (!r.ok) throw new Error(r.statusText);
+    if (!r.ok) throw new Error(`HTTP ${r.status}`);
     const resp = await r.json();
     const items = resp.items || resp; // 相容舊格式
     const usdTwd = resp.usd_twd_rate || null;
