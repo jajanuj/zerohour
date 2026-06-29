@@ -710,17 +710,39 @@ async function loadSignals() {
     document.getElementById('entry-reason').textContent = comb.reason || '—';
 
     const announce = document.getElementById('announce-area');
+    // 顯示最後更新時間
+    const updatedAt = d.updated_at ? new Date(d.updated_at + 'Z') : null;
+    const updatedLabel = updatedAt
+      ? `（最後更新：${updatedAt.toLocaleDateString('zh-TW')} ${updatedAt.toLocaleTimeString('zh-TW', {hour:'2-digit',minute:'2-digit'})}）`
+      : '';
     if (action === 'BUY') {
-      announce.innerHTML = `<div class="announce announce-info"><i class="ti ti-bell" aria-hidden="true"></i><span>今日訊號：<strong>買進 ${comb.symbol || '0050'}</strong> — ${comb.reason}</span></div>`;
+      announce.innerHTML = `<div class="announce announce-info"><i class="ti ti-bell" aria-hidden="true"></i><span>今日訊號：<strong>買進 ${comb.symbol || '0050'}</strong> — ${comb.reason} <span style="opacity:.6;font-size:11px">${updatedLabel}</span></span></div>`;
     } else {
-      announce.innerHTML = `<div class="announce announce-info"><i class="ti ti-info-circle" aria-hidden="true"></i><span>今日無進場訊號 — 系統持續監控中</span></div>`;
+      announce.innerHTML = `<div class="announce announce-info"><i class="ti ti-info-circle" aria-hidden="true"></i><span>今日無進場訊號 — 系統持續監控中 <span style="opacity:.6;font-size:11px">${updatedLabel}</span></span></div>`;
     }
 
   } catch (e) {
-    document.getElementById('announce-area').innerHTML = `<div class="announce announce-warn"><i class="ti ti-alert-triangle" aria-hidden="true"></i><span>訊號載入失敗：${e.message}。請確認後端服務正常。</span></div>`;
+    document.getElementById('announce-area').innerHTML = `<div class="announce announce-warn"><i class="ti ti-alert-triangle" aria-hidden="true"></i><span>訊號載入失敗：${e.message || 'HTTP 錯誤'}。請確認後端服務正常。</span></div>`;
+    // 清除所有骨架動畫
     ['s1-val','s2-val','s3-val'].forEach(id => {
       const el = document.getElementById(id);
-      if (el) { el.textContent = '錯誤'; el.className = 'sig-value bear'; }
+      if (el) { el.textContent = '—'; el.className = 'sig-value neut'; }
+    });
+    ['s1-sub','s2-sub','s3-sub'].forEach(id => {
+      const el = document.getElementById(id);
+      if (el) el.textContent = '—';
+    });
+    ['val-nasdaq','val-sp500','val-sox','val-ma200'].forEach(id => {
+      const el = document.getElementById(id);
+      if (el) el.textContent = '—';
+    });
+    ['bar-nasdaq','bar-sp500','bar-sox','bar-ma200'].forEach(id => {
+      const el = document.getElementById(id);
+      if (el) el.style.width = '0%';
+    });
+    ['entry-symbol','entry-position','entry-stoploss','entry-reason'].forEach(id => {
+      const el = document.getElementById(id);
+      if (el) el.textContent = '—';
     });
   }
 }
@@ -994,6 +1016,21 @@ async function loadWatchlist() {
     _updatePositionSizes();
 
     // 非同步抓取即時股價 + 技術指標
+    const _clearWlLoading = () => {
+      for (const w of items) {
+        const k = w.symbol.replace('.','_');
+        if (!_wlPrices[w.symbol]) {
+          const prEl = document.getElementById('price-' + k);
+          if (prEl) prEl.innerHTML = '<span style="color:var(--text-muted);font-size:11px">— 無法取得 —</span>';
+          const techEl = document.getElementById('tech-' + k);
+          if (techEl) techEl.innerHTML = '<span style="color:var(--text-muted)">—</span>';
+          const trigEl = document.getElementById('trigger-' + k);
+          if (trigEl) trigEl.innerHTML = '<span style="color:var(--text-muted)">—</span>';
+          const trigBadge = document.getElementById('trigger-badge-' + k);
+          if (trigBadge) trigBadge.innerHTML = '<span style="color:var(--text-muted)">—</span>';
+        }
+      }
+    };
     fetch(API + '/api/v1/watchlist/prices').then(r => r.json()).then(prices => {
       _wlPrices = prices;
 
@@ -1055,7 +1092,12 @@ async function loadWatchlist() {
 
       // 部位大小計算
       _updatePositionSizes();
-    }).catch(e => console.warn('watchlist prices failed', e));
+      // 更新未回傳資料的 symbol（後端逾時回空 {} 時會全清）
+      _clearWlLoading();
+    }).catch(e => {
+      console.warn('watchlist prices failed', e);
+      _clearWlLoading();  // 確保 "計算中..." 不會永遠顯示
+    });
   } catch(e) {
     area.innerHTML = `<div class="empty-state">載入失敗：${e.message}</div>`;
     badge.textContent = '錯誤'; badge.className = 'badge badge-sell';

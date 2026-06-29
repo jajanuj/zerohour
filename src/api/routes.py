@@ -38,14 +38,25 @@ async def health_check():
 
 @router.get("/signals/current", response_model=CurrentSignalsResponse)
 async def get_current_signals():
-    """即時抓取市場資料並生成 S1/S2/S3 訊號。"""
+    """即時抓取市場資料並生成 S1/S2/S3 訊號（Redis 快取 30 分鐘）。"""
     import asyncio
+    import json as _json
     from datetime import datetime
     from ..data.fetcher import USMarketFetcher, TWMarketFetcher
     from ..data.normalizer import DataNormalizer
     from ..signals.time_diff import TimeDiffSignalGenerator
     from ..signals.ma200_filter import MA200Filter
     from ..signals.aggregator import SignalAggregator
+
+    # ── Redis 快取檢查 ────────────────────────────────────────────────
+    _rc = _price_cache()
+    if _rc:
+        try:
+            _cached = _rc.get("zrh:sig:current")
+            if _cached:
+                return CurrentSignalsResponse.model_validate_json(_cached)
+        except Exception:
+            pass
 
     try:
         loop = asyncio.get_running_loop()
@@ -90,7 +101,8 @@ async def get_current_signals():
         agg = SignalAggregator()
         combined = agg.aggregate(trend, time_diff)
 
-        return CurrentSignalsResponse(
+        _resp = CurrentSignalsResponse(
+            updated_at=datetime.utcnow(),
             trend=TrendSignalSchema(
                 symbol=trend.symbol,
                 state=trend.state.value,
@@ -117,6 +129,12 @@ async def get_current_signals():
                 reason=combined.reason,
             ),
         )
+        if _rc:
+            try:
+                _rc.setex("zrh:sig:current", 1800, _resp.model_dump_json())
+            except Exception:
+                pass
+        return _resp
 
     except Exception as e:
         logger.error(f"get_current_signals error: {e}")
@@ -468,7 +486,7 @@ async def get_watchlist_prices():
             return sym, None
 
     loop = _aio.get_running_loop()
-    pool = ThreadPoolExecutor(max_workers=8)
+    pool = ThreadPoolExecutor(max_workers=2)  # 限制並發避免 OOM → 502
     try:
         futures = [loop.run_in_executor(pool, _fetch_one, s) for s in symbols]
         try:
@@ -678,7 +696,7 @@ async def get_portfolio():
 
     valid_syms = list({p["symbol"] for p in positions if p["symbol"]})
     loop = _aio.get_running_loop()
-    pool = ThreadPoolExecutor(max_workers=12)
+    pool = ThreadPoolExecutor(max_workers=4)  # 限制並發避免 OOM → 502
     try:
         futs = [loop.run_in_executor(pool, _fetch_price, s) for s in valid_syms]
         rate_fut = loop.run_in_executor(pool, _fetch_usd_twd)

@@ -35,6 +35,7 @@ class CurrentSignalsResponse(BaseModel):
     trend: Optional[TrendSignalSchema] = None
     time_diff: Optional[TimeDiffSignalSchema] = None
     combined: Optional[CombinedSignalSchema] = None
+    updated_at: Optional[datetime] = None  # 訊號計算時間（快取命中時為快取建立時間）
 
 
 class PositionSchema(BaseModel):
