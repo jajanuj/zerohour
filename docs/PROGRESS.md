@@ -1,6 +1,6 @@
 # ZeroHour — 開發進度追蹤
 
-> 最後更新：2026-06-28（功能盤點 + 第三階段完成）
+> 最後更新：2026-06-29（Redis 價格快取 + Timeout 防掛死）
 
 ---
 
@@ -133,8 +133,9 @@
 
 ### 高優先：效能
 
-**2. Watchlist + Portfolio 每次都重新抓 1 年資料** — `_fetch_one()` 每次頁面載入都呼叫 `tkr.history(period="1y")` + `fast_info.last_price`。8 支 Watchlist 股票 = 8 個並發 yfinance 請求，每個下載 250 筆資料。
-- **建議做法**：Redis 快取，TTL = 5 分鐘（技術指標不需要秒更新）
+**2. ✅ Redis 快取（已實作 2026-06-29）** — `_fetch_price`、`_fetch_usd_twd`、`_fetch_one` 均加入 Upstash Redis 快取（TTL = 300s）。快取命中時直接從 Redis 回傳，跳過 yfinance 請求。另加 `asyncio.wait_for` 逾時（portfolio 25s、watchlist 30s），使用 `pool.shutdown(wait=False)` 防止伺服器掛死。
+- **快取 Key 格式**：`zrh:price:{sym}`、`zrh:rate:usdtwd`、`zrh:wl:{sym}`
+- **效果**：第一次載入仍需等 yfinance（一次性），後續 5 分鐘內幾乎秒開
 
 ### 中優先：功能完整性
 

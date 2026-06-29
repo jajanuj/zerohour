@@ -236,6 +236,20 @@ async def get_black_swan_status():
         return None
 
 
+def _price_cache():
+    """Get sync Redis client for price caching (2s timeout). Returns None on failure."""
+    try:
+        import redis as _r
+        import ssl as _ssl
+        url = settings.redis_url
+        kw: dict = {"socket_connect_timeout": 2, "socket_timeout": 2, "decode_responses": True}
+        if url.startswith("rediss://"):
+            kw["ssl_cert_reqs"] = _ssl.CERT_NONE
+        return _r.from_url(url, **kw)
+    except Exception:
+        return None
+
+
 @router.get("/watchlist", response_model=list[WatchlistItemSchema])
 async def get_watchlist():
     """取得目前 Watchlist（選股 Pipeline 輸出）。"""
@@ -283,6 +297,15 @@ async def get_watchlist_prices():
         return ema
 
     def _fetch_one(sym: str):
+        import json as _json
+        rc = _price_cache()
+        try:
+            if rc:
+                cached = rc.get(f"zrh:wl:{sym}")
+                if cached is not None:
+                    return sym, _json.loads(cached)
+        except Exception:
+            pass
         try:
             import yfinance as _yf
             tkr = _yf.Ticker(sym)
@@ -405,7 +428,7 @@ async def get_watchlist_prices():
             else:
                 trigger_action, trigger_color = "暫勿進場", "#ff4444"
 
-            return sym, {
+            _result = {
                 "price": round(price, 1),
                 "is_live": is_live,
                 "day_change_pct": day_change_pct,
@@ -431,14 +454,29 @@ async def get_watchlist_prices():
                     "signals": trigger_signals,
                 },
             }
+            if rc is not None:
+                try:
+                    rc.setex(f"zrh:wl:{sym}", 300, _json.dumps(_result))
+                except Exception:
+                    pass
+            return sym, _result
         except Exception as e:
             logger.error(f"watchlist prices {sym}: {e}")
             return sym, None
 
     loop = _aio.get_running_loop()
-    with ThreadPoolExecutor(max_workers=8) as pool:
+    pool = ThreadPoolExecutor(max_workers=8)
+    try:
         futures = [loop.run_in_executor(pool, _fetch_one, s) for s in symbols]
-        results = await _aio.gather(*futures, return_exceptions=True)
+        try:
+            results = await _aio.wait_for(
+                _aio.gather(*futures, return_exceptions=True), timeout=30.0
+            )
+        except _aio.TimeoutError:
+            logger.warning("watchlist price fetch timed out after 30s — returning partial")
+            results = [f.result() if f.done() and not f.cancelled() else (None, None) for f in futures]
+    finally:
+        pool.shutdown(wait=False)
 
     out = {}
     for r in results:
@@ -582,8 +620,16 @@ async def get_portfolio():
     sl_pct = settings.index_stop_loss_pct  # 0.12
 
     def _fetch_price(sym: str):
+        import math
+        rc = _price_cache()
         try:
-            import math
+            if rc:
+                cached = rc.get(f"zrh:price:{sym}")
+                if cached is not None:
+                    return sym, float(cached)
+        except Exception:
+            pass
+        try:
             import yfinance as _yf
             tkr = _yf.Ticker(sym)
             try:
@@ -594,26 +640,58 @@ async def get_portfolio():
             if live <= 0 or math.isnan(live):
                 hist = tkr.history(period="3d").dropna(subset=["Close"])
                 live = float(hist.iloc[-1]["Close"]) if not hist.empty else 0.0
-            return sym, round(live, 4) if live > 0 and not math.isnan(live) else None
+            price = round(live, 4) if live > 0 and not math.isnan(live) else None
+            if price is not None and rc is not None:
+                try:
+                    rc.setex(f"zrh:price:{sym}", 300, str(price))
+                except Exception:
+                    pass
+            return sym, price
         except Exception as e:
             logger.warning(f"portfolio price {sym}: {e}")
             return sym, None
 
     def _fetch_usd_twd():
+        rc = _price_cache()
+        try:
+            if rc:
+                cached = rc.get("zrh:rate:usdtwd")
+                if cached is not None:
+                    return float(cached)
+        except Exception:
+            pass
         try:
             import yfinance as _yf
             hist = _yf.Ticker("USDTWD=X").history(period="3d").dropna(subset=["Close"])
-            return round(float(hist.iloc[-1]["Close"]), 2) if not hist.empty else None
+            rate = round(float(hist.iloc[-1]["Close"]), 2) if not hist.empty else None
+            if rate is not None and rc is not None:
+                try:
+                    rc.setex("zrh:rate:usdtwd", 300, str(rate))
+                except Exception:
+                    pass
+            return rate
         except Exception:
             return None
 
     valid_syms = list({p["symbol"] for p in positions if p["symbol"]})
     loop = _aio.get_running_loop()
-    with ThreadPoolExecutor(max_workers=12) as pool:
+    pool = ThreadPoolExecutor(max_workers=12)
+    try:
         futs = [loop.run_in_executor(pool, _fetch_price, s) for s in valid_syms]
         rate_fut = loop.run_in_executor(pool, _fetch_usd_twd)
-        price_results = await _aio.gather(*futs, return_exceptions=True)
-        usd_twd = await rate_fut
+        try:
+            price_results = await _aio.wait_for(
+                _aio.gather(*futs, return_exceptions=True), timeout=25.0
+            )
+        except _aio.TimeoutError:
+            logger.warning("portfolio price fetch timed out after 25s — returning partial")
+            price_results = [f.result() if f.done() and not f.cancelled() else (None, None) for f in futs]
+        try:
+            usd_twd = await _aio.wait_for(rate_fut, timeout=5.0)
+        except _aio.TimeoutError:
+            usd_twd = None
+    finally:
+        pool.shutdown(wait=False)
 
     price_map: dict[str, float] = {}
     for r in price_results:
