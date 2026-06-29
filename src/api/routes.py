@@ -659,8 +659,14 @@ async def get_portfolio():
             except Exception:
                 live = 0.0
             if live <= 0 or math.isnan(live):
-                hist = tkr.history(period="3d").dropna(subset=["Close"])
-                live = float(hist.iloc[-1]["Close"]) if not hist.empty else 0.0
+                # 債券 ETF 可能好幾天沒成交，逐步放寬回看期
+                for _p in ("5d", "1mo", "3mo"):
+                    hist = tkr.history(period=_p).dropna(subset=["Close"])
+                    if not hist.empty:
+                        live = float(hist.iloc[-1]["Close"])
+                        break
+                else:
+                    live = 0.0
             price = round(live, 4) if live > 0 and not math.isnan(live) else None
             if price is not None and rc is not None:
                 try:
