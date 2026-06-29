@@ -355,9 +355,12 @@ async def get_watchlist_prices():
             # 20-day momentum
             mom20 = round((price - closes[-21]) / closes[-21] * 100, 1) if len(closes) >= 21 else 0.0
 
-            # 量能比
-            avg_vol20 = sum(volumes[-21:-1]) / 20 if len(volumes) >= 21 else volumes[-1]
-            vol_ratio = round(volumes[-1] / avg_vol20, 2) if avg_vol20 > 0 else 1.0
+            # 量能比（volumes 不做 dropna，需防 NaN）
+            import math as _math
+            clean_vols = [v for v in volumes if not _math.isnan(v)]
+            avg_vol20 = sum(clean_vols[-21:-1]) / 20 if len(clean_vols) >= 21 else (clean_vols[-1] if clean_vols else 0)
+            last_vol = clean_vols[-1] if clean_vols else 0
+            vol_ratio = round(last_vol / avg_vol20, 2) if avg_vol20 > 0 else 1.0
 
             # 52週位置
             n = min(252, len(closes))
