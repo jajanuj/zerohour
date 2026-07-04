@@ -1,101 +1,77 @@
-# Claude.md — 專案開發規範
+# CLAUDE.md — ZeroHour 專案路由中心
 
-## 👤 角色定位
+> 本檔只放核心規則與檔案路由。細則在 `docs/harness/`，**按需跳轉，不要一次全讀**。
+> ZeroHour 是部署在 Fly.io 的**真金交易系統**（FastAPI + Supabase + Upstash Redis + Celery）。
+> 你寫的每一行代碼都可能影響真實金錢，不確定就停下來問。
 
-你是這個專案的持續開發工程師，負責長期維護與功能開發。每次對話你只需要專注完成一個功能，完成後才進行下一個。
+## 溝通規則
 
----
+- 每次回覆開頭稱呼「老闆」
+- 回覆結構：1. 本次做了什麼 2. 遇到什麼問題（若有）3. 下一步
+- 規格不清楚 → 先問，**不得自行假設後修改**
 
-## 🗣️ 溝通規則
+## Session 啟動（總成本 < 5k tokens，禁止超讀）
 
-- 每次回覆開頭都要稱呼「老闆」
-- 遇到不清楚的規格，**必須先詢問確認**，不得自行假設後進行修改
-- 每次回覆依以下結構回應：
-  1. 本次做了什麼
-  2. 遇到什麼問題（若有）
-  3. 下一步是什麼
+1. 讀 `docs/PROGRESS.md` **前 40 行**（`Read` 帶 `limit=40`；最新狀態在頂部）
+2. `git status` 確認 repo 狀態
+3. 掃一眼 `docs/harness/LESSONS.md` 的教訓欄
+4. 向老闆確認本次任務後才動工
 
----
+## 規格書查閱鐵則（啟動與開發全程適用）
 
-## 🚀 Session 啟動流程
+查 `docs/trading-system-impl.md` 一律先讀 `docs/harness/IMPL-MAP.md`
+取得章節行號，用 offset/limit 讀單章。**該檔禁止整讀**（3,678 行 ≈ 40k tokens）。
 
-每次對話開始時，請依序執行：
+## 開發循環（每個功能走完一輪）
 
-1. 閱讀 `docs/PROGRESS.md`，了解目前開發狀態
-2. 執行 `git status`，確認 repo 當前狀況
-3. 確認專案環境可正常啟動
-4. 讀取 `docs/trading-system-impl.md`，選出下一個待處理項目
-   - ⚠️ **若找不到計劃文件，立即通知老闆，並暫停所有開發工作。沒有計劃與規範，無法進行功能實作。**
-5. 向老闆確認本次要執行的任務後再開始動工
+1. **單一功能**：一次只做一件事，不動無關代碼
+2. **實作前**：涉及規格 → IMPL-MAP 查對應章節；涉及已知坑 → LESSONS.md
+3. **Push 前強制驗證**（缺一不可，貼輸出證明）：
+   ```
+   python -m py_compile <每一個改過的 .py>
+   python -m pytest tests/unit -x -q
+   ```
+4. **完成判定**：對照 `docs/harness/D-judgment-rubric.md` §2 的量化清單
+5. **Commit**：`git add <明確檔名>`（**禁止 `git add -A` 和 `git add .`**）→ commit → push
+6. **Push 後煙霧測試**（等 ~3 分鐘部署；用 Bash 工具執行，PowerShell 跑 `/dev/null` 會失敗）：
+   ```
+   curl -s -o /dev/null -w "%{http_code}" https://zerohour-trading-engine.fly.dev/api/v1/positions
+   ```
+   非 200 → 停止宣告完成，立即回報
+7. **更新 `docs/PROGRESS.md`**：新條目寫在「最新狀態」區頂部，格式見該檔開頭說明
 
----
+## Commit 格式
 
-## 🔨 開發工作流程
+`feat:` 新功能 `fix:` 修錯 `docs:` 文件 `test:` 測試 `refactor:` 重構 `chore:` 雜項
 
-每次任務請依序執行：
+## 紅線（違反任何一條 = 立即停手回報老闆）
 
-1. **專注單一功能**：每次只完成一個功能，不同時進行多項工作
-2. **範圍控制**：不得修改與當前任務無關的程式碼，避免引入意外 bug
-3. **更新計劃**：功能討論確定要實作時，立即更新 `docs/trading-system-impl.md` 補充規格，並在 `docs/PROGRESS.md` 新增對應的 🔄 進行中項目
-4. **E2E 測試**：在將任何功能標記為完成前，必須使用 **Puppeteer / Playwright** 模擬真實用戶操作進行 end-to-end 測試，測試腳本存放於專案指定資料夾，方便日後重複執行
-5. **語法與邏輯自查**：實作完成後，逐一確認以下項目再提交：
-   - 語法無誤（無 typo、縮排正確）
-   - 邏輯正確（公式、條件判斷、資料流向）
-   - 無遺漏的 TODO / placeholder
-   - 不影響既有功能
-6. **提交 Commit + Push**：自查通過後，`git commit` 並 `git push origin master`
-7. **更新進度**：更新 `docs/PROGRESS.md`，將剛完成的項目標記為 ✅
-8. **確保乾淨狀態**：確認代碼可正常運行後再結束本次工作
-
----
-
-## 📝 Commit 訊息格式
-
-```
-feat:     新增用戶登入功能
-fix:      修復首頁 RWD 排版問題
-docs:     更新 PROGRESS.md
-test:     新增 E2E 登入測試
-refactor: 重構購物車邏輯
-chore:    更新套件版本
-```
-
----
-
-## 📁 進度管理（PROGRESS.md）
-
-以下兩個時機都必須更新 `docs/PROGRESS.md`：
-
-- 每次完成一個功能後
-- 每次 session 結束前
-
-記錄內容包含：
-
-| 狀態 | 說明 |
+| 紅線 | 原因 |
 |------|------|
-| ✅ 已完成 | 本次完成的事項 |
-| 🔄 進行中 | 尚未完成的工作 |
-| ⏳ 待處理 | 下一步預計執行的項目 |
-| ⚠️ 遇到的問題 | 卡關點或已知問題 |
+| `git add -A` / `git add .` / `git add -f` | 曾有活密鑰檔在 untracked 邊緣（A 診斷書痛點二）|
+| 未跑 pytest 就 push | push master = 直接部署生產（A 診斷書痛點三）|
+| 動 `src/risk/`、`src/signals/` 的公式或參數而未先問老闆 | 直接影響真實金錢 |
+| 資料庫 schema 異動、API 介面變更、新增依賴 | 需老闆明示同意 |
+| `fly secrets set`、動 `.env*` 檔內容 | 生產憑證，只有老闆能動 |
+| 同一問題連續失敗 2 次還繼續原地重試 | 走 D 檔 §1 換路徑判準或 C 檔升級路徑（此為主對話門檻；Subagent 的升降級門檻更嚴，見 C 檔 §4）|
 
----
+## 檔案路由（需要時才讀）
 
-## ⚠️ 特殊情況處理規則
+| 情境 | 讀這個 |
+|------|--------|
+| 查系統規格 | `docs/harness/IMPL-MAP.md` → 定位後讀單章 |
+| 要派 Subagent / 連續失敗要升降級 | `docs/harness/C-model-dispatch.md` |
+| 判斷「該停嗎/完成了嗎/該問老闆嗎」 | `docs/harness/D-judgment-rubric.md` |
+| 派工 prompt 怎麼寫 | `docs/harness/E-delegation-templates.md` |
+| 想修改 harness 規則檔 | `docs/harness/F-knowledge-protocol.md`（先讀再動）|
+| 接手大任務前 | `docs/harness/G-handover.md` |
+| 踩坑了 | 追加到 `docs/harness/LESSONS.md`（唯一可自由追加的檔）|
+| 想知道規則為什麼長這樣 | `docs/harness/A-diagnosis.md`（唯讀）|
 
-### 計劃文件不存在
-找不到 `docs/trading-system-impl.md`，立即通知老闆並暫停開發。沒有計劃與規範，不得自行推測功能進行實作。
+## 環境速查
 
-### 測試失敗
-E2E 測試若失敗，立即停下並回報問題，不得強行標記為完成或跳過測試。
-
-### 安裝新套件
-新增任何 dependency 前，必須先詢問老闆確認，不可自行決定。
-
-### 破壞性變更
-若任務涉及以下情況，必須先說明影響範圍，獲得確認後再執行：
-- 資料庫 schema 異動
-- API 介面變更
-- 影響現有功能的重構
-
-### 遇到卡關
-同一問題嘗試超過 2 次仍無法解決，主動回報卡關原因並請求指引，不得無限嘗試。
+- 生產：https://zerohour-trading-engine.fly.dev （web 256MB / worker 512MB，記憶體是硬天花板）
+- 部署：push 到 **main 或 master 任一分支** → GitHub Actions 自動部署（**目前無測試閘門**，所以 push 前驗證是唯一防線）
+- 本地跑 API：`uvicorn src.main:app --port 8080`
+- E2E：`python -m pytest tests/e2e -x -q`（Playwright dashboard 測試在 `tests/e2e/test_dashboard_playwright.py`）
+- DB：生產 Supabase PostgreSQL；本地 SQLite `zerohour_dev.db`（已 gitignore）

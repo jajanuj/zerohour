@@ -1,8 +1,33 @@
 # ZeroHour — 開發進度追蹤
 
-> 最後更新：2026-06-29（Redis 價格快取 + Timeout 防掛死）
+> 結構規則：新條目寫在下方「📍 最新狀態」區**頂部**（一個 session 一個小節）。
+> Session 啟動只讀本檔前 40 行。歷史細節在檔案下半部，按需查閱。
+> 超過 250 行觸發壓縮（見 docs/harness/F-knowledge-protocol.md §4）。
 
 ---
+
+## 📍 最新狀態（新的寫最上面）
+
+### 2026-07-04 — Harness 制度建設（Fable 5 一次性 session）
+- ✅ 建立 `docs/harness/` 制度檔案（A–G + LESSONS + IMPL-MAP），CLAUDE.md 重寫為路由中心
+- ✅ 防錯：.gitignore 補 `.env*`/`*.db`；`.claude/settings.json` deny 高危 git 指令
+- ⏳ 待老闆決定：deploy.yml 測試閘門 patch（見 A-diagnosis.md 痛點三）
+- ⚠️ 已知問題：web 256MB 記憶體吃緊；API 無認證（任何人可打 /tasks 端點）
+
+### 2026-07-04 — 持倉顯示修正
+- ✅ N/A 股價（債券 ETF 回看期 5d→1mo→3mo）、具體出售建議（股數+獲利額）、損益四欄重構（e0fa40e）
+
+### 2026-06-29~07-03 — 效能與穩定性
+- ✅ Redis 價格快取 + timeout 防掛死（de23a68）、NaN 500 修正（927165b）、OOM 502 修正 + 訊號快取 30 分（d178cae）
+
+### 下一步候選（老闆確認後執行）
+1. API 認證（X-API-Key）— 高優先，端點全裸奔中
+2. deploy.yml 測試閘門 — patch 已備好在 A-diagnosis.md
+3. 每日任務加非交易日過濾 — 省 Gemini 免費額度（RPD 上限 20）
+
+---
+
+## 📚 歷史紀錄（2026-06-29 前的累積狀態，僅供查閱）
 
 ## ✅ 已完成且驗證通過
 

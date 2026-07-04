@@ -1,0 +1,26 @@
+{
+  "permissions": {
+    "deny": [
+      "Bash(git push --force*)",
+      "Bash(git push -f*)",
+      "Bash(git reset --hard*)",
+      "Bash(git add -A*)",
+      "Bash(git add .)",
+      "Bash(git add -f*)",
+      "Bash(git clean -f*)",
+      "PowerShell(git push --force*)",
+      "PowerShell(git push -f*)",
+      "PowerShell(git reset --hard*)",
+      "PowerShell(git add -A*)",
+      "PowerShell(git add .)",
+      "PowerShell(git add -f*)",
+      "PowerShell(git clean -f*)",
+      "PowerShell(fly secrets set*)",
+      "PowerShell(flyctl secrets set*)",
+      "Bash(fly secrets set*)",
+      "Bash(flyctl secrets set*)",
+      "Read(.env)",
+      "Read(.env.tmp)"
+    ]
+  }
+}

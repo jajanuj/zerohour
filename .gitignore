@@ -12,10 +12,19 @@ dist/
 build/
 .eggs/
 
-# Environment
+# Environment — 擋所有 .env 變體（曾有 .env.tmp 含活密鑰差點入版控，見 docs/harness/A-diagnosis.md 痛點二）
 .env
-.env.local
-.env.*.local
+.env.*
+.env*.tmp
+!.env.example
+
+# Local databases
+*.db
+*.db-journal
+*.sqlite3
+
+# Harness 備份檔
+*.bak
 
 # Testing
 .pytest_cache/
