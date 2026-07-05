@@ -186,6 +186,22 @@ def generate_signal():
         combined = agg.aggregate(trend, time_diff)
         action = combined.final_action.value  # BUY / SELL / HOLD / EXIT_ALL
 
+        # S4：台股趨勢確認因子——只縮放 BUY 買入倉位，進出時點/決策矩陣/停損停利不變
+        # （docs/strategy-s4-spec.md §3；模組內建 fail-open ×1.0，外層再保險一層）
+        from .signals.taiex_confirm import TaiexConfirmFilter
+        try:
+            s4 = TaiexConfirmFilter().calculate()
+        except Exception as e:
+            logger.error(f"S4 taiex_confirm 例外，fail-open ×1.0: {e}", exc_info=True)
+            s4 = None
+        effective_position_pct = float(combined.suggested_position_pct)
+        if s4 is not None:
+            effective_position_pct = round(effective_position_pct * s4.modifier, 3)
+            logger.info(
+                f"S4: {s4.reason} | 倉位 {float(combined.suggested_position_pct):.3f} "
+                f"→ {effective_position_pct:.3f}"
+            )
+
         # Save signals to DB
         signal_id = sync_run(save_time_diff_signal(
             direction=time_diff.direction.value,
@@ -209,6 +225,18 @@ def generate_signal():
             is_newly_crossed=trend.is_newly_crossed,
             conditions=trend.conditions,
         ))
+        # S4 訊號入庫：復用 trend_signals（B4，無 schema 變更）
+        if s4 is not None:
+            sync_run(save_trend_signal(
+                symbol="TAIEX",
+                state=s4.taiex_state,
+                current_price=float(s4.taiex_price),
+                ma200=float(s4.taiex_ma200),
+                distance_pct=float(s4.taiex_distance_pct),
+                signal_date=datetime.utcnow(),
+                is_newly_crossed=False,
+                conditions=s4.conditions,
+            ))
 
         logger.info(f"Signal: {action} | S2={time_diff.direction.value} "
                     f"conf={time_diff.confidence:.2f} | S1={trend.state.value}")
@@ -229,6 +257,16 @@ def generate_signal():
         from .alerts.discord import get_alerter
         alerter = get_alerter()
 
+        # S4 fail-open 警告（B2：資料抓不到 → ×1.0 + Discord 警告）
+        if s4 is None or not s4.data_ok:
+            try:
+                sync_run(alerter.system_error(
+                    "S4 台股趨勢確認",
+                    s4.reason if s4 is not None else "TaiexConfirmFilter 例外，fail-open ×1.0",
+                ))
+            except Exception as e:
+                logger.warning(f"S4 fail-open Discord 警告發送失敗: {e}")
+
         # 推播訊號（BUY/SELL/EXIT_ALL 才發；HOLD 不推播避免疲勞轟炸）
         if action in ("BUY", "SELL", "EXIT_ALL"):
             sync_run(alerter.signal_alert(
@@ -237,9 +275,9 @@ def generate_signal():
                 confidence=float(time_diff.confidence),
                 s1_state=trend.state.value,
                 s2_direction=time_diff.direction.value,
-                position_pct=float(combined.suggested_position_pct),
+                position_pct=effective_position_pct,
                 stop_loss_pct=float(combined.stop_loss_pct),
-                reason=combined.reason,
+                reason=combined.reason + (f"｜{s4.reason}" if s4 is not None else ""),
             ))
 
         if action == "BUY" and not has_position:
@@ -253,7 +291,7 @@ def generate_signal():
                 sizing = sizer.calculate(
                     account_equity=account_equity,
                     current_exposure=positions_value,
-                    suggested_pct=combined.suggested_position_pct,
+                    suggested_pct=effective_position_pct,  # S4 係數已乘入
                     current_price=fill_price,
                 )
                 if sizing["blocked"]:
@@ -300,6 +338,9 @@ def generate_signal():
             "direction": time_diff.direction.value,
             "confidence": float(time_diff.confidence),
             "s1_state": trend.state.value,
+            "s4_modifier": s4.modifier if s4 is not None else 1.0,
+            "s4_state": s4.taiex_state if s4 is not None else "ERROR",
+            "effective_position_pct": effective_position_pct,
             "signal_id": signal_id,
         }
 

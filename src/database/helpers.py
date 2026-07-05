@@ -763,6 +763,9 @@ async def get_signal_history(days: int = 30) -> list[dict]:
         for r in rows:
             trend_result = await session.execute(
                 select(TrendSignal)
+                # 限定 QQQ：S4 上線後 trend_signals 也有 TAIEX 列，
+                # 此處是 dashboard 的 S1 欄位，語意為 QQQ 趨勢
+                .where(TrendSignal.symbol == "QQQ")
                 .where(TrendSignal.signal_date <= r.generated_at)
                 .order_by(desc(TrendSignal.signal_date))
                 .limit(1)
