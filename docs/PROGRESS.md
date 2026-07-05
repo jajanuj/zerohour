@@ -8,6 +8,33 @@
 
 ## 📍 最新狀態（新的寫最上面）
 
+### 2026-07-06 — S4 台股趨勢確認因子實作上線（規格：docs/strategy-s4-spec.md）
+
+**任務目標**：S4 = S3 的 BUY 倉位調整係數（方案 A）。台股自身趨勢不健康時買一樣的訊號、
+買少一點。S3 進出時點/決策矩陣/停損停利零變更。
+
+**已完成**：
+- ✅ TWSE BFI82U 端點實測並記入規格 §2（rwd 端點可用、openapi 302 棄用、
+  假日 stat 非 OK 跳過、金額單位元）
+- ✅ 新增 `src/signals/taiex_confirm.py`：^TWII 200MA（復用 MA200Filter）+ 法人 5 日淨額，
+  §3 係數表 v0，fail-open ×1.0，係數夾限 [0.5,1.0]，逐次 timeout 10s / 總預算 30s /
+  回看上限 10 天
+- ✅ `tasks.py::generate_signal` 接點：`effective_position_pct = suggested × s4.modifier`
+  只餵給 BUY 的 PositionSizer；S4 入庫 `save_trend_signal(symbol="TAIEX")`（B4 無 schema
+  變更，帶 conditions 明細）；無資料時 Discord system_error 警告；signal_alert reason
+  追加 s4.reason
+- ✅ 連帶修正：`get_signal_history` 的 TrendSignal 查詢加 `symbol=="QQQ"` 過濾
+  （TAIEX 列入庫後會污染 dashboard S1 欄位，原查詢無 symbol 條件）
+- ✅ `tests/unit/test_taiex_confirm.py` 18 個測試（§3 表 5 列/假日跳過/部分失敗/
+  資料不足/夾限/預算耗盡/結構異常/conditions），全套 171 passed
+- ✅ 隔離驗收 PASS（E 檔模板 4，獨立 Sonnet 驗收官，14 項判準全過、差異清單「無」；
+  確認 HOLD/SELL/EXIT_ALL 路徑 diff 為零、禁改檔零異動）
+
+**踩坑**：Windows `time.monotonic()` 解析度粗，預算歸零測試用 `>` 判不出來 → 改 `>=`
+
+**下一步**（規格 §7.3）：觀察 3 個交易日的 04:05 Discord 訊號中 S4 reason 是否合理；
+首個交易日後查 `trend_signals` 表 TAIEX 列確認入庫正常。
+
 ### 2026-07-05 — 報表可觀測性優化 6 項全部完成（計畫：docs/report-optimization-plan.md）
 
 **任務目標**：老闆核准借鑑外部 AI 交易報表的 6 項設計（逐條件明細/品質註記/決策下一步/
