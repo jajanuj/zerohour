@@ -58,6 +58,8 @@ async def save_time_diff_signal(
     trigger_reason: str,
     suggested_action: str = "HOLD",
     suggested_symbol: str = "0050",
+    conditions: list | None = None,
+    next_step: str | None = None,
 ) -> int:
     """Save S2 time-diff signal. Returns DB record id."""
     async with get_session() as session:
@@ -71,6 +73,8 @@ async def save_time_diff_signal(
             trigger_reason=trigger_reason,
             suggested_symbol=suggested_symbol,
             suggested_action=suggested_action,
+            conditions=conditions,
+            next_step=next_step,
         )
         session.add(record)
         await session.flush()
@@ -85,6 +89,7 @@ async def save_trend_signal(
     distance_pct: float,
     signal_date: datetime,
     is_newly_crossed: bool = False,
+    conditions: list | None = None,
 ) -> None:
     """Save S1 MA200 trend signal."""
     async with get_session() as session:
@@ -96,6 +101,7 @@ async def save_trend_signal(
             ma200=ma200,
             distance_pct=distance_pct,
             is_newly_crossed=is_newly_crossed,
+            conditions=conditions,
         ))
 
 
@@ -755,6 +761,8 @@ async def get_signal_history(days: int = 30) -> list[dict]:
                 "trigger_reason": r.trigger_reason or "",
                 "trend_state": trend.state if trend else "UNKNOWN",
                 "ma200_distance": float(trend.distance_pct or 0) if trend else 0.0,
+                "conditions": r.conditions or [],
+                "next_step": r.next_step or "",
             })
         return output
 

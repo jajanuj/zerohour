@@ -11,6 +11,7 @@ class TrendSignalSchema(BaseModel):
     distance_pct: float
     signal_date: datetime
     is_newly_crossed: bool
+    conditions: list[dict] = []  # 預設空 list，容忍舊快取 JSON
 
 
 class TimeDiffSignalSchema(BaseModel):
@@ -21,6 +22,7 @@ class TimeDiffSignalSchema(BaseModel):
     sox_change_pct: float
     trigger_reason: str
     generated_at: datetime
+    conditions: list[dict] = []
 
 
 class CombinedSignalSchema(BaseModel):
@@ -29,6 +31,7 @@ class CombinedSignalSchema(BaseModel):
     suggested_position_pct: float
     stop_loss_pct: float
     reason: str
+    conditions: list[dict] = []
 
 
 class CurrentSignalsResponse(BaseModel):
@@ -156,6 +159,8 @@ class SignalHistoryItem(BaseModel):
     trigger_reason: str
     trend_state: str
     ma200_distance: float
+    conditions: list[dict] = []
+    next_step: str = ""
 
 
 class BacktestCompareRequest(BaseModel):

@@ -1,6 +1,6 @@
 import pandas as pd
 import numpy as np
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 from enum import Enum
 from typing import Optional
 import logging
@@ -23,6 +23,7 @@ class MA200Signal:
     ma200: float
     distance_pct: float
     is_newly_crossed: bool
+    conditions: list = field(default_factory=list)
 
 
 class MA200Filter:
@@ -64,6 +65,13 @@ class MA200Filter:
                 ma200=0.0,
                 distance_pct=0.0,
                 is_newly_crossed=False,
+                conditions=[{
+                    "name": "data_sufficient",
+                    "label": "資料量",
+                    "passed": False,
+                    "actual": f"{len(price_data)} 筆",
+                    "threshold": f"≥{self.period} 筆",
+                }],
             )
 
         df = price_data.copy().sort_values("date").reset_index(drop=True)
@@ -94,9 +102,45 @@ class MA200Filter:
             ma200 = float(ma200_val)
             distance_pct = (current_price - ma200) / ma200 * 100
 
+        # 逐條件明細（觀測層，不影響判斷；規格見 docs/report-optimization-plan.md §1.1）
+        conditions = [{
+            "name": "data_sufficient",
+            "label": "資料量",
+            "passed": True,
+            "actual": f"{len(price_data)} 筆",
+            "threshold": f"≥{self.period} 筆",
+        }]
+        if pd.isna(ma200_val):
+            conditions.append({
+                "name": "price_vs_ma200",
+                "label": "價格 vs MA200",
+                "passed": False,
+                "actual": "MA200 未成形",
+                "threshold": "價格 > MA200",
+            })
+        else:
+            conditions.append({
+                "name": "price_vs_ma200",
+                "label": "價格 vs MA200",
+                "passed": current_price > float(ma200_val),
+                "actual": f"{current_price:.2f}",
+                "threshold": f"MA200 {float(ma200_val):.2f}",
+            })
+
         if state != TrendState.UNDEFINED and prev_state not in (None, TrendState.UNDEFINED):
             lower = ma200 * (1 - self.exit_buffer_pct)
             upper = ma200 * (1 + self.enter_buffer_pct)
+            band_passed = (
+                current_price >= lower if prev_state == TrendState.BULL
+                else current_price > upper
+            )
+            conditions.append({
+                "name": "buffer_band",
+                "label": "緩衝帶",
+                "passed": band_passed,
+                "actual": f"{current_price:.2f}",
+                "threshold": f"下緣 {lower:.2f} / 上緣 {upper:.2f}",
+            })
             if prev_state == TrendState.BULL:
                 state = TrendState.BEAR if current_price < lower else TrendState.BULL
             else:  # prev_state == BEAR
@@ -113,6 +157,7 @@ class MA200Filter:
             ma200=ma200,
             distance_pct=float(distance_pct),
             is_newly_crossed=is_newly_crossed,
+            conditions=conditions,
         )
 
     def _check_newly_crossed(

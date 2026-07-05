@@ -169,6 +169,12 @@
   .compare-table tr:last-child td { border-bottom: none; }
   .compare-table .best { color: var(--green); font-weight: 700; }
   .compare-table .worst { color: var(--red); }
+  /* 條件明細 chips（報表優化 Phase B） */
+  .cond-chips { display: flex; flex-wrap: wrap; gap: 4px; margin-top: 8px; }
+  .cond-chip { font-size: 10px; padding: 2px 7px; border-radius: 10px; border: 1px solid; white-space: nowrap; cursor: default; }
+  .cond-chip.pass { color: var(--green-text); border-color: var(--green); background: var(--green-bg); }
+  .cond-chip.fail { color: var(--red-text); border-color: var(--red); background: var(--red-bg); }
+  .cond-chip.na { color: var(--text-muted); border-color: var(--text-light); background: transparent; }
 </style>
 </head>
 <body>
@@ -224,6 +230,7 @@
         <div class="sig-row"><span class="sig-row-name">S&P 500</span><div class="sig-row-bar"><div class="sig-row-fill fill-neut" style="width:50%" id="bar-sp500"></div></div><span class="sig-row-val skeleton skeleton-text" id="val-sp500"> </span></div>
         <div class="sig-row"><span class="sig-row-name">SOX 半導體</span><div class="sig-row-bar"><div class="sig-row-fill fill-neut" style="width:50%" id="bar-sox"></div></div><span class="sig-row-val skeleton skeleton-text" id="val-sox"> </span></div>
         <div class="sig-row"><span class="sig-row-name">MA200 距離</span><div class="sig-row-bar"><div class="sig-row-fill fill-neut" style="width:50%" id="bar-ma200"></div></div><span class="sig-row-val skeleton skeleton-text" id="val-ma200"> </span></div>
+        <div id="cond-chips" class="cond-chips"></div>
       </div>
     </div>
 
@@ -657,6 +664,17 @@ function actionBadge(action) {
   return { cls: 'badge-' + (map[action] || 'gray'), label: labelMap[action] || action };
 }
 
+// 條件明細 chips（規格見 docs/report-optimization-plan.md §1.1）。回傳 chips HTML（不含外層容器）。
+function renderCondChips(conds) {
+  if (!conds || !conds.length) return '';
+  return conds.map(c => {
+    const cls  = c.passed === true ? 'pass' : c.passed === false ? 'fail' : 'na';
+    const mark = c.passed === true ? '✓' : c.passed === false ? '✗' : '—';
+    const title = `${c.label}：${c.actual}（需 ${c.threshold}）`;
+    return `<span class="cond-chip ${cls}" title="${title}">${mark} ${c.label}</span>`;
+  }).join('');
+}
+
 async function loadSignals() {
   try {
     const r = await fetch(API + '/api/v1/signals/current');
@@ -699,6 +717,13 @@ async function loadSignals() {
     setBar('bar-sp500', 'val-sp500', td.sp500_change_pct);
     setBar('bar-sox', 'val-sox', td.sox_change_pct);
     setBar('bar-ma200', 'val-ma200', trend.distance_pct, 20);
+
+    // 條件明細 chips：S1 + S2 + S3 併同一列顯示
+    const condArea = document.getElementById('cond-chips');
+    if (condArea) {
+      const allConds = (trend.conditions || []).concat(td.conditions || [], comb.conditions || []);
+      condArea.innerHTML = renderCondChips(allConds);
+    }
 
     const hasSignal = action === 'BUY' || action === 'SELL';
     document.getElementById('entry-symbol').textContent = comb.symbol || '0050';
@@ -747,6 +772,8 @@ async function loadSignals() {
       const el = document.getElementById(id);
       if (el) el.textContent = '—';
     });
+    const condArea = document.getElementById('cond-chips');
+    if (condArea) condArea.innerHTML = '';
   }
 }
 
@@ -1432,6 +1459,7 @@ async function loadSignalHistory() {
             <th>費城半導體</th>
             <th>S1 趨勢</th>
             <th>動作建議</th>
+            <th>條件</th>
           </tr>
         </thead>
         <tbody>
@@ -1445,6 +1473,7 @@ async function loadSignalHistory() {
               <td class="${s.sox_change_pct>0.2?'bull':s.sox_change_pct<-0.2?'bear':''}">${s.sox_change_pct>=0?'+':''}${s.sox_change_pct.toFixed(2)}%</td>
               <td><span class="badge badge-${trendCls[s.trend_state]||'gray'}">${s.trend_state}</span> <span style="font-size:11px;color:var(--text-muted)">${s.ma200_distance>=0?'+':''}${s.ma200_distance.toFixed(1)}%</span></td>
               <td style="font-size:12px">${s.suggested_action||'—'}</td>
+              <td><div class="cond-chips" style="margin-top:0">${renderCondChips(s.conditions)}</div></td>
             </tr>
           `).join('')}
         </tbody>

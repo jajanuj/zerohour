@@ -28,6 +28,8 @@ class TimeDiffSignal:
     suggested_symbol: str
     suggested_action: str
 
+    conditions: list = field(default_factory=list)
+
     entry_window_start: time = field(default_factory=lambda: time(9, 0))
     entry_window_end: time = field(default_factory=lambda: time(9, 30))
     exit_time: time = field(default_factory=lambda: time(13, 25))
@@ -62,6 +64,44 @@ class TimeDiffSignalGenerator:
     ) -> TimeDiffSignal:
         generated_at = generated_at or datetime.now()
 
+        # 逐條件明細（純比較/純函數，提前計算不影響決策；規格見
+        # docs/report-optimization-plan.md §1.1）
+        _sp500_aligned = (sp500_change_pct > 0) == (nasdaq_change_pct > 0)
+        _sox_aligned = (sox_change_pct > 0) == (nasdaq_change_pct > 0)
+        _confidence_preview = self._calc_confidence(
+            nasdaq_change_pct, sp500_change_pct, sox_change_pct, _sox_aligned
+        )
+        conditions = [
+            {
+                "name": "nasdaq_threshold",
+                "label": "NASDAQ 波動",
+                "passed": abs(nasdaq_change_pct) >= self.nasdaq_threshold,
+                "actual": f"{nasdaq_change_pct:+.2f}%",
+                "threshold": f"±{self.nasdaq_threshold}%",
+            },
+            {
+                "name": "sp500_aligned",
+                "label": "S&P500 同向",
+                "passed": _sp500_aligned,
+                "actual": f"{sp500_change_pct:+.2f}%",
+                "threshold": "與 NASDAQ 同向",
+            },
+            {
+                "name": "sox_aligned",
+                "label": "SOX 同向",
+                "passed": _sox_aligned,
+                "actual": f"{sox_change_pct:+.2f}%",
+                "threshold": "與 NASDAQ 同向",
+            },
+            {
+                "name": "min_confidence",
+                "label": "信心度",
+                "passed": _confidence_preview >= self.min_confidence,
+                "actual": f"{_confidence_preview:.2f}",
+                "threshold": f"≥{self.min_confidence}",
+            },
+        ]
+
         nasdaq_abs = abs(nasdaq_change_pct)
         if nasdaq_abs < self.nasdaq_threshold:
             return self._neutral(
@@ -70,6 +110,7 @@ class TimeDiffSignalGenerator:
                 sp500_change_pct,
                 sox_change_pct,
                 reason=f"NASDAQ 漲跌幅 {nasdaq_change_pct:.2f}% 未達門檻 ±{self.nasdaq_threshold}%",
+                conditions=conditions,
             )
 
         direction = SignalDirection.LONG if nasdaq_change_pct > 0 else SignalDirection.SHORT
@@ -82,6 +123,7 @@ class TimeDiffSignalGenerator:
                 sp500_change_pct,
                 sox_change_pct,
                 reason="NASDAQ 與 S&P 500 方向不一致（板塊分化）",
+                conditions=conditions,
             )
 
         sox_aligned = (sox_change_pct > 0) == (nasdaq_change_pct > 0)
@@ -92,6 +134,7 @@ class TimeDiffSignalGenerator:
                 sp500_change_pct,
                 sox_change_pct,
                 reason="費半（SOX）方向與 NASDAQ 不一致",
+                conditions=conditions,
             )
 
         confidence = self._calc_confidence(
@@ -105,6 +148,7 @@ class TimeDiffSignalGenerator:
                 sp500_change_pct,
                 sox_change_pct,
                 reason=f"信心度 {confidence:.2f} 低於最低門檻 {self.min_confidence}",
+                conditions=conditions,
             )
 
         suggested_symbol, suggested_action = self._suggest_trade(direction)
@@ -126,6 +170,7 @@ class TimeDiffSignalGenerator:
             trigger_reason=trigger_reason,
             suggested_symbol=suggested_symbol,
             suggested_action=suggested_action,
+            conditions=conditions,
         )
 
     def _calc_confidence(
@@ -156,6 +201,7 @@ class TimeDiffSignalGenerator:
         sp500: float,
         sox: float,
         reason: str,
+        conditions: Optional[list] = None,
     ) -> TimeDiffSignal:
         return TimeDiffSignal(
             generated_at=generated_at,
@@ -167,4 +213,5 @@ class TimeDiffSignalGenerator:
             trigger_reason=reason,
             suggested_symbol="",
             suggested_action="HOLD",
+            conditions=conditions or [],
         )

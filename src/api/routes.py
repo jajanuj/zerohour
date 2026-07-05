@@ -53,7 +53,7 @@ async def get_current_signals():
     _rc = _price_cache()
     if _rc:
         try:
-            _cached = _rc.get("zrh:sig:current")
+            _cached = _rc.get("zrh:sig:current:v2")
             if _cached:
                 return CurrentSignalsResponse.model_validate_json(_cached)
         except Exception:
@@ -122,6 +122,7 @@ async def get_current_signals():
                 distance_pct=float(trend.distance_pct),
                 signal_date=datetime.combine(trend.date, datetime.min.time()),
                 is_newly_crossed=trend.is_newly_crossed,
+                conditions=trend.conditions,
             ),
             time_diff=TimeDiffSignalSchema(
                 direction=time_diff.direction.value,
@@ -131,6 +132,7 @@ async def get_current_signals():
                 sox_change_pct=sox_chg,
                 trigger_reason=time_diff.trigger_reason,
                 generated_at=time_diff.generated_at,
+                conditions=time_diff.conditions,
             ),
             combined=CombinedSignalSchema(
                 final_action=combined.final_action.value,
@@ -138,11 +140,12 @@ async def get_current_signals():
                 suggested_position_pct=float(combined.suggested_position_pct),
                 stop_loss_pct=float(combined.stop_loss_pct),
                 reason=combined.reason,
+                conditions=combined.conditions,
             ),
         )
         if _rc:
             try:
-                _rc.setex("zrh:sig:current", 1800, _resp.model_dump_json())
+                _rc.setex("zrh:sig:current:v2", 1800, _resp.model_dump_json())
             except Exception:
                 pass
         return _resp

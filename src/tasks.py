@@ -190,6 +190,7 @@ def generate_signal():
             trigger_reason=time_diff.trigger_reason,
             suggested_action=action,
             suggested_symbol=SYMBOL,
+            conditions=time_diff.conditions + combined.conditions,
         ))
         sync_run(save_trend_signal(
             symbol="QQQ",
@@ -199,6 +200,7 @@ def generate_signal():
             distance_pct=float(trend.distance_pct),
             signal_date=datetime.utcnow(),
             is_newly_crossed=trend.is_newly_crossed,
+            conditions=trend.conditions,
         ))
 
         logger.info(f"Signal: {action} | S2={time_diff.direction.value} "

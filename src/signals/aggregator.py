@@ -1,4 +1,4 @@
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 from enum import Enum
 from typing import Optional
 import logging
@@ -26,6 +26,8 @@ class CombinedSignal:
     suggested_position_pct: float
     stop_loss_pct: float
     trailing_stop_pct: float
+    conditions: list = field(default_factory=list)
+    next_step: str = ""  # Phase C 填值（docs/report-optimization-plan.md）
 
 
 class SignalAggregator:
@@ -58,6 +60,24 @@ class SignalAggregator:
         time_diff: TimeDiffSignal,
         current_positions: Optional[dict] = None,
     ) -> CombinedSignal:
+        # 逐條件明細（觀測層，不影響決策矩陣；規格見 docs/report-optimization-plan.md §1.1）
+        conditions = [
+            {
+                "name": "s1_trend",
+                "label": "S1 趨勢",
+                "passed": trend.state == TrendState.BULL,
+                "actual": f"{trend.state.value}（{trend.distance_pct:+.1f}%）",
+                "threshold": "BULL",
+            },
+            {
+                "name": "s2_direction",
+                "label": "S2 方向",
+                "passed": time_diff.direction == SignalDirection.LONG,
+                "actual": time_diff.direction.value,
+                "threshold": "LONG",
+            },
+        ]
+
         if trend.state == TrendState.BEAR:
             return CombinedSignal(
                 final_action=FinalAction.EXIT_ALL,
@@ -68,6 +88,7 @@ class SignalAggregator:
                 suggested_position_pct=0.0,
                 stop_loss_pct=0.0,
                 trailing_stop_pct=0.0,
+                conditions=conditions,
             )
 
         if trend.state == TrendState.UNDEFINED:
@@ -80,6 +101,7 @@ class SignalAggregator:
                 suggested_position_pct=0.0,
                 stop_loss_pct=0.0,
                 trailing_stop_pct=0.0,
+                conditions=conditions,
             )
 
         if trend.state == TrendState.BULL and time_diff.direction == SignalDirection.LONG:
@@ -100,6 +122,7 @@ class SignalAggregator:
                 suggested_position_pct=round(position_pct, 3),
                 stop_loss_pct=self.index_stop_loss_pct,
                 trailing_stop_pct=self.trailing_stop_pct,
+                conditions=conditions,
             )
 
         return CombinedSignal(
@@ -114,4 +137,5 @@ class SignalAggregator:
             suggested_position_pct=0.0,
             stop_loss_pct=0.0,
             trailing_stop_pct=0.0,
+            conditions=conditions,
         )
