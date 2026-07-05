@@ -8,13 +8,32 @@
 
 ## 📍 最新狀態（新的寫最上面）
 
-### 2026-07-05 — 策略邏輯風控修復（第一批：讓已寫好的防線真的生效）
+### 2026-07-05 — 策略邏輯風控修復（第一批：讓已寫好的防線真的生效）【交接用完整版】
+
+**任務目標**：老闆要求「檢查目前策略邏輯，有沒有改善地方」→ 審查後發現三個「規則寫了但沒接上執行」的問題，
+老闆核准做「第一批」（保命類，不涉及策略設計變更）。
+
+**已完成到哪（第一批，已 push 並煙霧測試通過）**：
 - ✅ EXIT_ALL 接上執行與推播 — 200MA 轉空時過去完全靜默不清倉，`src/tasks.py generate_signal()` 只處理 BUY/SELL；現改為 SELL/EXIT_ALL 共用平倉分支，且 signal_alert 加入 EXIT_ALL；前端 [index.html](../src/static/index.html) 加對應徽章與警示文案
 - ✅ 倉位計算改用帳戶現況＋信心加權 — 過去用固定 `INITIAL_CAPITAL × max_position_pct`，虧損後仍照初始 100 萬開倉；改為 `PositionSizer` 讀當前現金+持倉市值，套用 `combined.suggested_position_pct`（信心加權 25~40%）並檢查總曝險上限，超限時記警告日誌並跳過下單
 - ✅ SignalAggregator 參數統一走 settings — `tasks.py` 與 `routes.py` 過去用預設值 `max_position_pct=0.40`，與 `.env` 的 `max_position_pct=0.30` 不同步（Dashboard 顯示與實際下單倉位不一致）；兩處都改為顯式傳入 settings
 - ✅ 順手修正 SELL 推播抓錯持倉數量的 bug（`open_positions[0]` → 對應 symbol 的部位）
-- ⏳ 第二批待老闆決策：S1 日檢 vs 規格書月檢 + 緩衝帶、PositionSizer lot_size 超買、熔斷狀態落 Redis（見對話中的策略邏輯審查報告）
-- 🧪 驗證：`python -m pytest tests/unit -x -q` 47 passed
+- **涉及檔案**：`src/tasks.py`（generate_signal 主要改動）、`src/api/routes.py`（SignalAggregator 參數對齊）、`src/alerts/discord.py`（EXIT_ALL 顏色/標籤）、`src/static/index.html`（前端徽章與警示文案）
+- **Commit**：8715192（harness 制度）→ 65dfb55（策略修復本體）
+- **部署驗證**：GitHub Actions Test & Lint / Deploy to Fly.io 均 success；`curl /api/v1/positions` → 200
+
+**下一步（第二批，尚未核准，需老闆逐項決策）**：
+1. S1 要維持現行「每日」判斷，還是照規格書 §1 改回「月底」判斷 + 加緩衝帶（避免價格貼 MA200 時天天多空翻轉）？
+2. `PositionSizer`（`src/risk/position_sizer.py`）lot_size 邏輯在資金不足一張時仍會強制買滿 1 張（超買），要不要修？
+3. `DailyCircuitBreaker`（`src/risk/exposure.py`）熔斷狀態存在記憶體，worker 重啟即歸零，要不要落地到 Redis？
+4. Harness 制度建設（前一 session）遺留：deploy.yml 測試閘門 patch（`docs/harness/A-diagnosis.md` 痛點三）、API 認證 X-API-Key、`.env.tmp` 檔案本體待老闆手動確認刪除
+
+**User 已核准 vs 尚未核准**：
+- 已核准並已執行：上述「已完成到哪」四項（第一批）
+- 尚未核准（等老闆回應）：上面「下一步」1–4 項，任何一項都不得未經同意直接動 `src/risk/`、`src/signals/` 或 CI 設定
+
+**驗證**：`python -m py_compile`（改動檔案全過）、`python -m pytest tests/unit -x -q` → 47 passed；`git status` 乾淨（無未提交變更）
+（本專案為 Python/FastAPI，無 `package.json`，故不適用 `npm run build/lint`；harness 索引在 `docs/harness/`，非 `.claude/harness/`）
 
 ### 2026-07-04 — Harness 制度建設（Fable 5 一次性 session）
 - ✅ 建立 `docs/harness/` 制度檔案（A–G + LESSONS + IMPL-MAP），CLAUDE.md 重寫為路由中心
