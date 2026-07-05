@@ -650,6 +650,32 @@
 <script>
 const API = '';
 
+// ─── API Key 驗證（後端啟用 X-API-Key 時）───────────────────────────
+// 包裝全域 fetch：/api/v1/ 請求自動帶 localStorage 的 key；
+// 收到 401 時 prompt 一次輸入（session 內不重複騷擾），存入後重新載入。
+(function () {
+  const origFetch = window.fetch.bind(window);
+  window.fetch = async function (url, opts) {
+    opts = opts || {};
+    const key = localStorage.getItem('zh_api_key');
+    if (typeof url === 'string' && url.includes('/api/v1/') && key) {
+      opts = Object.assign({}, opts);
+      opts.headers = Object.assign({}, opts.headers || {}, { 'X-API-Key': key });
+    }
+    const resp = await origFetch(url, opts);
+    if (resp.status === 401 && typeof url === 'string' && url.includes('/api/v1/')
+        && !sessionStorage.getItem('zh_key_prompted')) {
+      sessionStorage.setItem('zh_key_prompted', '1');
+      const entered = window.prompt('此系統已啟用 API Key 驗證，請輸入 API Key：');
+      if (entered && entered.trim()) {
+        localStorage.setItem('zh_api_key', entered.trim());
+        location.reload();
+      }
+    }
+    return resp;
+  };
+})();
+
 function fmt(n, digits=2) {
   if (n == null || isNaN(n)) return '—';
   return (n >= 0 ? '+' : '') + Number(n).toFixed(digits) + '%';
