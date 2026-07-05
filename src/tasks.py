@@ -180,6 +180,8 @@ def generate_signal():
             max_position_pct=settings.max_position_pct,
             index_stop_loss_pct=settings.index_stop_loss_pct,
             trailing_stop_pct=settings.trailing_stop_pct,
+            ma200_enter_buffer_pct=settings.ma200_enter_buffer_pct,
+            ma200_exit_buffer_pct=settings.ma200_exit_buffer_pct,
         )
         combined = agg.aggregate(trend, time_diff)
         action = combined.final_action.value  # BUY / SELL / HOLD / EXIT_ALL
@@ -195,6 +197,7 @@ def generate_signal():
             suggested_action=action,
             suggested_symbol=SYMBOL,
             conditions=time_diff.conditions + combined.conditions,
+            next_step=combined.next_step,
         ))
         sync_run(save_trend_signal(
             symbol="QQQ",

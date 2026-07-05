@@ -48,11 +48,16 @@ class SignalAggregator:
         max_position_pct: float = 0.40,
         index_stop_loss_pct: float = 0.12,
         trailing_stop_pct: float = 0.15,
+        ma200_enter_buffer_pct: float = 0.0,
+        ma200_exit_buffer_pct: float = 0.0,
     ):
         self.base_position_pct = base_position_pct
         self.max_position_pct = max_position_pct
         self.index_stop_loss_pct = index_stop_loss_pct
         self.trailing_stop_pct = trailing_stop_pct
+        # 僅供 next_step 文案顯示用，不參與任何決策（report-optimization-plan Phase C）
+        self.ma200_enter_buffer_pct = ma200_enter_buffer_pct
+        self.ma200_exit_buffer_pct = ma200_exit_buffer_pct
 
     def aggregate(
         self,
@@ -89,6 +94,12 @@ class SignalAggregator:
                 stop_loss_pct=0.0,
                 trailing_stop_pct=0.0,
                 conditions=conditions,
+                next_step=(
+                    f"等待 QQQ 收盤重新站上 "
+                    f"{trend.ma200 * (1 + self.ma200_enter_buffer_pct):.2f}"
+                    f"（MA200 進場緩衝上緣）"
+                    if trend.ma200 > 0 else "等待 S1 趨勢轉多"
+                ),
             )
 
         if trend.state == TrendState.UNDEFINED:
@@ -102,6 +113,7 @@ class SignalAggregator:
                 stop_loss_pct=0.0,
                 trailing_stop_pct=0.0,
                 conditions=conditions,
+                next_step="等待 200 日均線資料累積完成",
             )
 
         if trend.state == TrendState.BULL and time_diff.direction == SignalDirection.LONG:
@@ -123,7 +135,20 @@ class SignalAggregator:
                 stop_loss_pct=self.index_stop_loss_pct,
                 trailing_stop_pct=self.trailing_stop_pct,
                 conditions=conditions,
+                next_step=(
+                    f"依建議倉位 {round(position_pct, 3):.0%} 執行，"
+                    f"停損 {self.index_stop_loss_pct:.0%}"
+                ),
             )
+
+        # 下一步文案：取 S2 第一個未通過的條件（純顯示，不影響決策）
+        _failed = next(
+            (c for c in time_diff.conditions if c.get("passed") is False), None
+        )
+        next_step = (
+            f"等待 {_failed['label']} 達標（目前 {_failed['actual']}，需 {_failed['threshold']}）"
+            if _failed else "等待 S2 訊號轉 LONG"
+        )
 
         return CombinedSignal(
             final_action=FinalAction.HOLD,
@@ -138,4 +163,5 @@ class SignalAggregator:
             stop_loss_pct=0.0,
             trailing_stop_pct=0.0,
             conditions=conditions,
+            next_step=next_step,
         )

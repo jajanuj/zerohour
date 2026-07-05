@@ -251,10 +251,15 @@
           <span class="sig-row-name">停損設定</span>
           <span class="sig-row-val" id="entry-stoploss" style="width:auto;text-align:left;flex:1">—</span>
         </div>
-        <div class="sig-row" style="border-bottom:none">
+        <div class="sig-row">
           <span class="sig-row-name">理由</span>
           <span style="font-size:12px;color:var(--text-muted);flex:1" id="entry-reason">載入中...</span>
         </div>
+        <div class="sig-row" style="border-bottom:none">
+          <span class="sig-row-name">下一步</span>
+          <span style="font-size:12px;color:var(--text-muted);flex:1" id="entry-nextstep">—</span>
+        </div>
+        <div id="entry-keylevels" style="margin-top:4px"></div>
       </div>
     </div>
   </div>
@@ -735,6 +740,19 @@ async function loadSignals() {
       ? fmt(comb.stop_loss_pct * -1) + ' 觸發停損'
       : '—';
     document.getElementById('entry-reason').textContent = comb.reason || '—';
+    document.getElementById('entry-nextstep').textContent = comb.next_step || '—';
+
+    // 關鍵價位（report-optimization-plan Phase C/#6）
+    const klArea = document.getElementById('entry-keylevels');
+    if (klArea) {
+      const kl = comb.key_levels || [];
+      klArea.innerHTML = kl.length
+        ? `<div style="font-size:11px;font-weight:600;color:var(--text-muted);margin:6px 0 2px">關鍵價位</div>` +
+          kl.map(k =>
+            `<div class="sig-row" style="border-bottom:none;padding:2px 0"><span class="sig-row-name" style="font-size:11px">${k.label}</span><span style="font-size:12px;font-variant-numeric:tabular-nums;font-weight:600">${k.value}</span><span style="font-size:11px;color:var(--text-muted);flex:1;text-align:right">${k.note || ''}</span></div>`
+          ).join('')
+        : '';
+    }
 
     const announce = document.getElementById('announce-area');
     // 顯示最後更新時間
@@ -777,12 +795,14 @@ async function loadSignals() {
       const el = document.getElementById(id);
       if (el) el.style.width = '0%';
     });
-    ['entry-symbol','entry-position','entry-stoploss','entry-reason'].forEach(id => {
+    ['entry-symbol','entry-position','entry-stoploss','entry-reason','entry-nextstep'].forEach(id => {
       const el = document.getElementById(id);
       if (el) el.textContent = '—';
     });
-    const condArea = document.getElementById('cond-chips');
-    if (condArea) condArea.innerHTML = '';
+    ['cond-chips','entry-keylevels'].forEach(id => {
+      const el = document.getElementById(id);
+      if (el) el.innerHTML = '';
+    });
   }
 }
 

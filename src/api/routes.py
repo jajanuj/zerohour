@@ -53,7 +53,7 @@ async def get_current_signals():
     _rc = _price_cache()
     if _rc:
         try:
-            _cached = _rc.get("zrh:sig:current:v2")
+            _cached = _rc.get("zrh:sig:current:v3")
             if _cached:
                 return CurrentSignalsResponse.model_validate_json(_cached)
         except Exception:
@@ -115,8 +115,58 @@ async def get_current_signals():
             max_position_pct=settings.max_position_pct,
             index_stop_loss_pct=settings.index_stop_loss_pct,
             trailing_stop_pct=settings.trailing_stop_pct,
+            ma200_enter_buffer_pct=settings.ma200_enter_buffer_pct,
+            ma200_exit_buffer_pct=settings.ma200_exit_buffer_pct,
         )
         combined = agg.aggregate(trend, time_diff)
+
+        # 關鍵價位（全部由既有參數導出，純顯示；report-optimization-plan Phase C/#6）
+        import math as _kl_math
+        key_levels: list[dict] = []
+        if trend.ma200 > 0:
+            key_levels.append({
+                "label": "QQQ 出場緩衝下緣",
+                "value": round(trend.ma200 * (1 - settings.ma200_exit_buffer_pct), 2),
+                "note": "跌破則 S1 轉空",
+            })
+            key_levels.append({
+                "label": "QQQ 進場緩衝上緣",
+                "value": round(trend.ma200 * (1 + settings.ma200_enter_buffer_pct), 2),
+                "note": "站上則 S1 轉多",
+            })
+        if combined.final_action.value == "BUY":
+            try:
+                tw_fetcher = TWMarketFetcher()
+                tw_df = await asyncio.wait_for(
+                    loop.run_in_executor(
+                        None, lambda: tw_fetcher.get_historical("0050", period="5d")
+                    ),
+                    timeout=10,
+                )
+                _close = (
+                    float(tw_df.iloc[-1]["close"])
+                    if tw_df is not None and not tw_df.empty else float("nan")
+                )
+                if _kl_math.isfinite(_close) and _close > 0:
+                    key_levels.append({
+                        "label": "0050 進場參考價",
+                        "value": round(_close, 2),
+                        "note": "最新收盤",
+                    })
+                    key_levels.append({
+                        "label": "0050 停損價",
+                        "value": round(_close * (1 - float(combined.stop_loss_pct)), 2),
+                        "note": f"-{float(combined.stop_loss_pct):.0%}",
+                    })
+                else:
+                    raise ValueError("0050 close unavailable")
+            except Exception as _kl_err:
+                logger.warning(f"key_levels 0050 close fetch failed: {_kl_err}")
+                quality_notes.append({
+                    "source": "signals",
+                    "level": "warn",
+                    "message": "0050 收盤價無法取得，關鍵價位不完整",
+                })
 
         _resp = CurrentSignalsResponse(
             updated_at=datetime.utcnow(),
@@ -147,12 +197,14 @@ async def get_current_signals():
                 stop_loss_pct=float(combined.stop_loss_pct),
                 reason=combined.reason,
                 conditions=combined.conditions,
+                next_step=combined.next_step,
+                key_levels=key_levels,
             ),
             quality_notes=quality_notes,
         )
         if _rc:
             try:
-                _rc.setex("zrh:sig:current:v2", 1800, _resp.model_dump_json())
+                _rc.setex("zrh:sig:current:v3", 1800, _resp.model_dump_json())
             except Exception:
                 pass
         return _resp

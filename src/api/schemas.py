@@ -32,6 +32,8 @@ class CombinedSignalSchema(BaseModel):
     stop_loss_pct: float
     reason: str
     conditions: list[dict] = []
+    next_step: str = ""
+    key_levels: list[dict] = []  # 關鍵價位（§1.3）
 
 
 class CurrentSignalsResponse(BaseModel):
