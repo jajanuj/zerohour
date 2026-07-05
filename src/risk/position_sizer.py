@@ -72,7 +72,24 @@ class PositionSizer:
             }
 
         shares = invest_amount / current_price
-        lots = max(1, int(shares / lot_size)) if lot_size > 1 else shares
+        if lot_size > 1:
+            # 整張交易：無條件捨去到整張；不足一張 → 封鎖（禁止超買，2026-07-06 老闆核准修復）
+            lots = int(shares // lot_size)
+            if lots < 1:
+                return {
+                    "invest_amount": 0.0,
+                    "shares": 0.0,
+                    "lots": 0,
+                    "blocked": True,
+                    "reason": (
+                        f"資金不足最小交易單位（一張需 {current_price * lot_size:,.0f}，"
+                        f"可投入僅 {invest_amount:,.0f}）"
+                    ),
+                }
+            shares = float(lots * lot_size)
+            invest_amount = shares * current_price
+        else:
+            lots = shares
 
         logger.info(
             f"PositionSizer: 建議投入 {invest_amount:,.0f}，"
