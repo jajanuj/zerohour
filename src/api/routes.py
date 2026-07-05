@@ -66,23 +66,23 @@ async def get_current_signals():
         norm = DataNormalizer()
 
         # S2：時間差訊號（用美股最新收盤漲跌）
-        import math as _math
-
-        def _safe_chg(d: dict | None) -> float:
-            """從 get_all_signals_data 結果安全取 change_pct，防止 None / NaN。"""
-            if not d:
-                return 0.0
-            v = d.get("change_pct", 0.0)
-            try:
-                f = float(v)
-                return f if _math.isfinite(f) else 0.0
-            except (TypeError, ValueError):
-                return 0.0
+        from ..data.normalizer import safe_change_pct
 
         us_data = await loop.run_in_executor(None, fetcher.get_all_signals_data)
-        nasdaq_chg = _safe_chg(us_data.get("nasdaq"))
-        sp500_chg  = _safe_chg(us_data.get("sp500"))
-        sox_chg    = _safe_chg(us_data.get("sox"))
+        nasdaq_chg, _nas_def = safe_change_pct(us_data.get("nasdaq"))
+        sp500_chg, _sp_def   = safe_change_pct(us_data.get("sp500"))
+        sox_chg, _sox_def    = safe_change_pct(us_data.get("sox"))
+
+        # 資料品質註記（docs/report-optimization-plan.md Phase D）：
+        # 降級不再靜默，寫進回應讓 dashboard 顯示
+        quality_notes: list[dict] = []
+        for _name, _defaulted in (("NASDAQ", _nas_def), ("S&P500", _sp_def), ("SOX", _sox_def)):
+            if _defaulted:
+                quality_notes.append({
+                    "source": "signals",
+                    "level": "warn",
+                    "message": f"{_name} 漲跌幅缺失，以 0.0 代入（訊號可信度降低）",
+                })
 
         gen = TimeDiffSignalGenerator(
             nasdaq_threshold=settings.us_signal_threshold,
@@ -95,6 +95,12 @@ async def get_current_signals():
             None, lambda: fetcher.get_historical("qqq", period="2y")
         )
         qqq_df = norm.normalize_ohlcv(qqq_raw)
+        if len(qqq_df) < settings.ma_period:
+            quality_notes.append({
+                "source": "signals",
+                "level": "warn",
+                "message": f"QQQ 歷史資料不足（{len(qqq_df)}/{settings.ma_period} 筆），S1 為 UNDEFINED",
+            })
         ma_filter = MA200Filter(
             period=settings.ma_period,
             exit_buffer_pct=settings.ma200_exit_buffer_pct,
@@ -142,6 +148,7 @@ async def get_current_signals():
                 reason=combined.reason,
                 conditions=combined.conditions,
             ),
+            quality_notes=quality_notes,
         )
         if _rc:
             try:
@@ -661,9 +668,10 @@ async def get_portfolio():
             if rc:
                 cached = rc.get(f"zrh:price:{sym}")
                 if cached is not None:
-                    return sym, float(cached)
+                    return sym, float(cached), None
         except Exception:
             pass
+        note = None  # 資料品質註記（docs/report-optimization-plan.md Phase D）
         try:
             import yfinance as _yf
             tkr = _yf.Ticker(sym)
@@ -678,19 +686,25 @@ async def get_portfolio():
                     hist = tkr.history(period=_p).dropna(subset=["Close"])
                     if not hist.empty:
                         live = float(hist.iloc[-1]["Close"])
+                        note = {"source": "portfolio", "level": "info",
+                                "message": f"{sym} 無即時價，改用 {_p} 歷史收盤"}
                         break
                 else:
                     live = 0.0
             price = round(live, 4) if live > 0 and not math.isnan(live) else None
+            if price is None:
+                note = {"source": "portfolio", "level": "warn",
+                        "message": f"{sym} 價格無法取得"}
             if price is not None and rc is not None:
                 try:
                     rc.setex(f"zrh:price:{sym}", 300, str(price))
                 except Exception:
                     pass
-            return sym, price
+            return sym, price, note
         except Exception as e:
             logger.warning(f"portfolio price {sym}: {e}")
-            return sym, None
+            return sym, None, {"source": "portfolio", "level": "warn",
+                               "message": f"{sym} 價格無法取得"}
 
     def _fetch_usd_twd():
         rc = _price_cache()
@@ -717,6 +731,7 @@ async def get_portfolio():
     valid_syms = list({p["symbol"] for p in positions if p["symbol"]})
     loop = _aio.get_running_loop()
     pool = ThreadPoolExecutor(max_workers=4)  # 限制並發避免 OOM → 502
+    quality_notes: list[dict] = []
     try:
         futs = [loop.run_in_executor(pool, _fetch_price, s) for s in valid_syms]
         rate_fut = loop.run_in_executor(pool, _fetch_usd_twd)
@@ -726,7 +741,9 @@ async def get_portfolio():
             )
         except _aio.TimeoutError:
             logger.warning("portfolio price fetch timed out after 25s — returning partial")
-            price_results = [f.result() if f.done() and not f.cancelled() else (None, None) for f in futs]
+            price_results = [f.result() if f.done() and not f.cancelled() else (None, None, None) for f in futs]
+            quality_notes.append({"source": "portfolio", "level": "warn",
+                                  "message": "股價查詢逾時（25s），部分價格缺失"})
         try:
             usd_twd = await _aio.wait_for(rate_fut, timeout=5.0)
         except _aio.TimeoutError:
@@ -738,7 +755,9 @@ async def get_portfolio():
     for r in price_results:
         if isinstance(r, Exception):
             continue
-        sym, px = r
+        sym, px, note = r
+        if note:
+            quality_notes.append(note)
         if px is not None:
             price_map[sym] = px
 
@@ -779,7 +798,7 @@ async def get_portfolio():
             "twd_equiv": twd_equiv,
         })
 
-    return {"items": result, "usd_twd_rate": usd_twd}
+    return {"items": result, "usd_twd_rate": usd_twd, "quality_notes": quality_notes}
 
 
 _ALLOWED_TASKS = {

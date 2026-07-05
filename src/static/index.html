@@ -419,6 +419,7 @@
         <span style="font-size:11px;color:var(--text-light)">台股 或 複委託 CSV 皆可（自動識別格式）</span>
       </div>
       <div id="portfolio-msg" style="font-size:11px;color:var(--yellow);margin-bottom:8px"></div>
+      <div id="portfolio-quality" style="font-size:11px;line-height:1.7;margin-bottom:8px"></div>
       <div id="portfolio-summary" style="display:none;margin-bottom:12px;background:rgba(255,255,255,0.03);border-radius:6px;padding:10px 14px">
         <div style="display:grid;grid-template-columns:repeat(4,1fr);gap:12px">
           <div><div class="sig-label">投入成本</div><div class="sig-value neut" id="ptf-total-cost">—</div></div>
@@ -747,6 +748,14 @@ async function loadSignals() {
       announce.innerHTML = `<div class="announce announce-warn"><i class="ti ti-alert-triangle" aria-hidden="true"></i><span><strong>200MA 轉空，強制清倉</strong> — ${comb.reason} <span style="opacity:.6;font-size:11px">${updatedLabel}</span></span></div>`;
     } else {
       announce.innerHTML = `<div class="announce announce-info"><i class="ti ti-info-circle" aria-hidden="true"></i><span>今日無進場訊號 — 系統持續監控中 <span style="opacity:.6;font-size:11px">${updatedLabel}</span></span></div>`;
+    }
+
+    // 資料品質註記（降級不靜默；docs/report-optimization-plan.md Phase D）
+    const qn = d.quality_notes || [];
+    if (qn.length) {
+      announce.innerHTML += qn.map(n =>
+        `<div class="announce ${n.level === 'warn' ? 'announce-warn' : 'announce-info'}"><i class="ti ti-database-exclamation" aria-hidden="true"></i><span>資料品質：${n.message}</span></div>`
+      ).join('');
     }
 
   } catch (e) {
@@ -1182,6 +1191,15 @@ async function loadPortfolio() {
     const resp = await r.json();
     const items = resp.items || resp; // 相容舊格式
     const usdTwd = resp.usd_twd_rate || null;
+
+    // 資料品質註記（fallback 抓價/逾時不再靜默）
+    const pq = document.getElementById('portfolio-quality');
+    if (pq) {
+      const notes = resp.quality_notes || [];
+      pq.innerHTML = notes.map(n =>
+        `<div style="color:${n.level === 'warn' ? 'var(--yellow)' : 'var(--text-muted)'}">ⓘ ${n.message}</div>`
+      ).join('');
+    }
 
     if (!items.length) {
       badge.textContent = '未匯入'; badge.className = 'badge badge-gray';

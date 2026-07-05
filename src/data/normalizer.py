@@ -1,6 +1,26 @@
+import math
+
 import pandas as pd
 import numpy as np
 from typing import Optional
+
+
+def safe_change_pct(d: Optional[dict]) -> tuple[float, bool]:
+    """從 get_all_signals_data 的單一指數 dict 安全取 change_pct。
+
+    回傳 (change_pct, was_defaulted)。None / NaN / inf / 不可轉 float 一律回 (0.0, True)。
+    注意：`x or 0.0` 擋不住 NaN（NaN 是 truthy，LESSONS 2026-06），必須走這裡。
+    """
+    if not d:
+        return 0.0, True
+    v = d.get("change_pct")
+    try:
+        f = float(v)
+    except (TypeError, ValueError):
+        return 0.0, True
+    if not math.isfinite(f):
+        return 0.0, True
+    return f, False
 
 
 class DataNormalizer:

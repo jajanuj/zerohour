@@ -126,7 +126,7 @@ def fetch_us_market_data():
 def generate_signal():
     """04:05 生成 S1+S2+S3 訊號，若需要則執行 paper 下單。"""
     from .data.fetcher import USMarketFetcher, TWMarketFetcher
-    from .data.normalizer import DataNormalizer
+    from .data.normalizer import DataNormalizer, safe_change_pct
     from .signals.time_diff import TimeDiffSignalGenerator
     from .signals.ma200_filter import MA200Filter, TrendState
     from .signals.aggregator import SignalAggregator
@@ -149,9 +149,13 @@ def generate_signal():
 
         # S2
         us_data = fetcher.get_all_signals_data()
-        nasdaq_chg = us_data.get("nasdaq", {}).get("change_pct", 0.0) or 0.0
-        sp500_chg  = us_data.get("sp500",  {}).get("change_pct", 0.0) or 0.0
-        sox_chg    = us_data.get("sox",    {}).get("change_pct", 0.0) or 0.0
+        # `or 0.0` 擋不住 NaN（LESSONS 2026-06），統一走 safe_change_pct
+        nasdaq_chg, _nas_def = safe_change_pct(us_data.get("nasdaq"))
+        sp500_chg, _sp_def   = safe_change_pct(us_data.get("sp500"))
+        sox_chg, _sox_def    = safe_change_pct(us_data.get("sox"))
+        for _name, _def in (("NASDAQ", _nas_def), ("S&P500", _sp_def), ("SOX", _sox_def)):
+            if _def:
+                logger.warning(f"generate_signal: {_name} 漲跌幅缺失，以 0.0 代入（訊號可信度降低）")
 
         gen = TimeDiffSignalGenerator(
             nasdaq_threshold=settings.us_signal_threshold,
@@ -659,12 +663,14 @@ def check_black_swan():
     from .database import sync_run
     from .database.helpers import save_black_swan_alert
     from .data.fetcher import USMarketFetcher
+    from .data.normalizer import safe_change_pct
 
     try:
         fetcher = USMarketFetcher()
         us_data = fetcher.get_all_signals_data()
-        nasdaq_chg = us_data.get("nasdaq", {}).get("change_pct", 0.0) or 0.0
-        sox_chg = us_data.get("sox", {}).get("change_pct", 0.0) or 0.0
+        # `or 0.0` 擋不住 NaN（LESSONS 2026-06）；NaN 進比較式會靜默不觸發
+        nasdaq_chg, _ = safe_change_pct(us_data.get("nasdaq"))
+        sox_chg, _ = safe_change_pct(us_data.get("sox"))
         vix = fetch_vix()
 
         signal = detect_black_swan(
@@ -713,13 +719,15 @@ def run_market_context():
     from .database import sync_run
     from .database.helpers import save_market_context
     from .data.fetcher import USMarketFetcher
+    from .data.normalizer import safe_change_pct
 
     try:
         fetcher = USMarketFetcher()
         us_data = fetcher.get_all_signals_data()
-        nasdaq_chg = us_data.get("nasdaq", {}).get("change_pct", 0.0) or 0.0
-        sp500_chg  = us_data.get("sp500",  {}).get("change_pct", 0.0) or 0.0
-        sox_chg    = us_data.get("sox",    {}).get("change_pct", 0.0) or 0.0
+        # `or 0.0` 擋不住 NaN（LESSONS 2026-06）
+        nasdaq_chg, _ = safe_change_pct(us_data.get("nasdaq"))
+        sp500_chg, _  = safe_change_pct(us_data.get("sp500"))
+        sox_chg, _    = safe_change_pct(us_data.get("sox"))
 
         result = sync_run(run_market_context_agent(
             nasdaq_change_pct=nasdaq_chg,
