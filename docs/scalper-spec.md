@@ -1,7 +1,9 @@
 # SCALPER-SPEC — 策略三：股期影線區間刷單 實作規格書
 
 > **讀者**：負責實作的模型（Sonnet/Haiku）。派工時引用本檔章節號（例：「實作 §6，驗收條件見該節」）。
-> **狀態**：規劃完成，**全部項目未經老闆核准前禁止動工**。待核准清單見 §0。
+> **狀態**：2026-07-05 老闆已核准 A1-A6、A8（對話明示「a1-a8,b1-b5全部核准」）。
+> **A7（真金下單）不在核准範圍內**——本規格書設計上就把它排除在外，Phase 4 前需另案取得明示核准。
+> Phase 0（`scalper/` 骨架、核心決策模組、單元測試）已依此核准實作完成，見下方狀態欄。
 > **本模組跑在老闆本地機器（macOS），不部署到 Fly.io。** 生產系統（src/）一行都不准動，除非該節明確列出。
 
 ---
@@ -10,14 +12,47 @@
 
 | # | 項目 | 紅線類別 | 狀態 |
 |---|------|----------|------|
-| A1 | 新增頂層目錄 `scalper/`（獨立模組，不 import src/）| 架構新增 | ⬜ 待核准 |
-| A2 | 新依賴 `shioaji`：只寫進 `requirements-scalper.txt`，**禁止進 requirements.txt** | 新增依賴 | ⬜ 待核准 |
-| A3 | 風險參數 v0：單筆停損 2 ticks、同向庫存上限 1 口、日虧熔斷 3,000 元、連 3 筆虧損休 30 分鐘 | 資金參數 | ⬜ 待核准 |
-| A4 | 保證金撥款額度（建議 50,000 元 = 1 口保證金 + 緩衝）| 資金參數 | ⬜ 待核准 |
-| A5 | Phase 3 前：Supabase 新表 `scalper_trades`、`scalper_daily_stats`（設計見 §10）| DB schema | ⬜ 待核准 |
-| A6 | Phase 3 前：生產 API 新增唯讀端點 `GET /api/v1/black-swan/latest`（供本地程式查警報狀態）| API 介面 | ⬜ 待核准 |
-| A7 | Phase 4 真金下單：**屆時另行取得明示核准，本規格書的核准不含此項** | 真金 | ⬜ 鎖定 |
-| A8 | CLAUDE.md 路由表加一行指向本檔 | 規則檔 | ⬜ 待核准 |
+| A1 | 新增頂層目錄 `scalper/`（獨立模組，不 import src/）| 架構新增 | ✅ 已核准、已實作 |
+| A2 | 新依賴 `shioaji`：只裝老闆本地機器，禁止進生產依賴 | 新增依賴 | ✅ 已核准、已實作（見下方修正說明）|
+| A3 | 風險參數 v0：單筆停損 2 ticks、同向庫存上限 1 口、日虧熔斷 3,000 元、連 3 筆虧損休 30 分鐘 | 資金參數 | ✅ 已核准、已實作於 `scalper/config.py` |
+| A4 | 保證金撥款額度（建議 50,000 元 = 1 口保證金 + 緩衝）| 資金參數 | ✅ 已核准（僅金額決策，無對應代碼）|
+| A5 | Phase 3 前：Supabase 新表 `scalper_trades`、`scalper_daily_stats`（設計見 §10）| DB schema | ✅ 已核准，**尚未實作**（Phase 3 前才建表，見下方進度）|
+| A6 | Phase 3 前：生產 API 新增唯讀端點 `GET /api/v1/black-swan/latest`（供本地程式查警報狀態）| API 介面 | ✅ 已核准，**尚未實作**（Phase 3 前才動 `src/`）|
+| A7 | Phase 4 真金下單：**屆時另行取得明示核准，本規格書的核准不含此項** | 真金 | ⬜ 鎖定（`ShioajiBrokerAdapter` 全部下單方法已寫死 `raise NotImplementedError`）|
+| A8 | CLAUDE.md 路由表加一行指向本檔 | 規則檔 | ✅ 已核准、已實作 |
+
+**A2 修正說明**：規劃時假設用 `requirements-scalper.txt`，但實測發現本專案依賴管理已統一用
+`pyproject.toml` 的 `[project.optional-dependencies]`（`dev`、`backtest` 已是此模式），
+故比照辦理新增 `scalper` extra group，而非另開一份 requirements 檔。功能等價（`pip install
+shioaji` 只在明確加 `.[scalper]` 才會安裝），且 `docker/Dockerfile` 只執行 `pip install
+".[dev]"`，scalper extra 不會進生產環境。已驗證 `shioaji` 套件名稱與版本（`pip index versions
+shioaji` → 最新 1.5.5），寫入 `pyproject.toml` 為 `shioaji>=1.5.0,<2.0.0`。另新增 `.dockerignore`
+排除 `scalper/`、`tests/`、`docs/` 等目錄，確保 `COPY . .` 不會把這些帶進生產 image。
+
+### Phase 0 實作進度（本輪已完成）
+
+`scalper/` 已建立以下模組，全數通過 `python -m py_compile` 與 `pytest tests/unit -x -q`
+（115 passed，含 64 個 scalper 專屬測試，覆蓋 §12 要求的核心邏輯）：
+
+| 模組 | 狀態 | 備註 |
+|------|------|------|
+| `config.py` | ✅ 完成 | pydantic settings，讀 `.env.scalper` |
+| `range_engine.py` | ✅ 完成+測試 | 60分K聚合、參考區間、跨日/缺K處理 |
+| `grid.py` | ✅ 完成+測試 | §1 v0 規則表核心：進場/逆選擇過濾/停損/區間失效/暫停恢復 |
+| `risk_guard.py` | ✅ 完成+測試 | 熔斷/庫存上限/連虧冷卻/結算日過濾 |
+| `broker.py` | ✅ 完成+測試 | SimBrokerAdapter（可測）+ ShioajiBrokerAdapter（全數 raise，A7 鎖定）|
+| `replay.py` | ✅ 完成+測試 | 悲觀成交模型 + 回測編排（含停利/停損/風控擋單情境）|
+| `recorder.py` | ✅ 完成+測試 | SQLite tick 落地 + 完整性驗證 |
+| `notify.py` | ✅ 完成+測試 | Discord webhook（mock 測試）|
+| `feed.py` | ⚠️ 完成，**未驗證** | Shioaji 連線/訂閱，方法名以官方文件為準，需 Phase 0 §5 實測校正 |
+| `contracts.py` | ⚠️ 部分驗證 | 離線量能排行已測試；即時五檔取樣需盤中連線才能驗證 |
+| `runner.py` | ⚠️ 骨架 | record 模式邏輯完整但未實測；sim 模式僅骨架，待 Phase 3 補完 |
+
+**老闆下一步需要做的事**（Phase 0 §5 任務 0-1~0-5，見下方章節）：
+1. 永豐申請模擬環境 API Key/Secret，填入本地 `scalper/.env`（複製自 `scalper/.env.example`）
+2. 本地 `pip install ".[scalper]"` 驗證 shioaji 安裝（macOS 若失敗，備援方案見 §2）
+3. 盤中執行 `feed.py` 的登入+訂閱，實測校正官方 API 呼叫方式
+4. 執行標的流動性掃描（`contracts.py`），選定 2-3 檔進入 Phase 1 錄製名單
 
 環境變數（老闆自填本地 `.env.scalper`，模型禁止讀取或寫入其內容）：
 `SHIOAJI_API_KEY`、`SHIOAJI_SECRET_KEY`、`SHIOAJI_CA_PATH`（Phase 4 才需要）、`SHIOAJI_CA_PASSWORD`（Phase 4）、`SCALPER_DISCORD_WEBHOOK`。

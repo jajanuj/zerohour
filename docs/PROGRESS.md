@@ -8,6 +8,45 @@
 
 ## 📍 最新狀態（新的寫最上面）
 
+### 2026-07-05 — 策略三（scalper）Phase 0 核心模組實作完成，老闆已核准 A1-A8/B1-B5
+
+**任務目標**：老闆核准 scalper-spec.md 全部 A 項與 strategy-s4-spec.md 全部 B 項（A7 真金下單
+除外，設計上本就排除在外），指示「先完成策略三」。本輪建立完整 `scalper/` 模組（Phase 0 骨架 +
+Phase 1 錄製器 + Phase 2 悲觀回測引擎），S4（策略一）尚未動工，留待下一輪。
+
+**已完成到哪**：
+- ✅ 新增 `scalper/` 獨立模組（不 import src/，不進 Fly.io 部署）：
+  `config.py`、`range_engine.py`（60分K/參考區間）、`grid.py`（v0規則表決策核心：進場/
+  逆選擇過濾/停損/區間失效/暫停恢復）、`risk_guard.py`（熔斷/庫存上限/連虧冷卻/結算日過濾）、
+  `broker.py`（SimBrokerAdapter 可測 + ShioajiBrokerAdapter 全數 raise，A7 鎖定未實作）、
+  `replay.py`（悲觀成交模型 + 回測編排）、`recorder.py`（SQLite tick落地）、`notify.py`
+  （Discord webhook）、`feed.py`/`contracts.py`/`runner.py`（Shioaji 連線骨架，**未經實測**，
+  方法名以官方文件為準，Phase 0 §5 待老闆本地實測校正）
+- ✅ `pyproject.toml` 新增 `[project.optional-dependencies] scalper`（`shioaji>=1.5.0,<2.0.0`，
+  已用 `pip index versions shioaji` 驗證存在與版本）——**與規格書原訂的
+  `requirements-scalper.txt` 不同**，改用本專案既有的 pyproject extras 慣例，功能等價
+- ✅ 新增 `.dockerignore`（排除 `scalper/`、`tests/`、`docs/` 等，確保生產 image 不含這些）
+- ✅ `tests/unit/scalper/`：64 個新測試，覆蓋 §12 要求全部核心邏輯（含跨日/缺K、逆選擇過濾、
+  停利/停損/區間失效/暫停恢復、風控熔斷、悲觀成交模型的三種成交/不成交情境）
+- ✅ `docs/scalper-spec.md` §0 更新核准狀態與 A2 修正說明；CLAUDE.md 路由表加 scalper 與 S4 兩行
+- ✅ 驗證：`python -m py_compile` 全部 12 個新 .py 檔案通過；`pytest tests/unit -x -q` → 115 passed
+
+**遇到的問題**：
+- 規格書假設用 `requirements-scalper.txt`，實測發現專案已用 `pyproject.toml` optional-dependencies
+  慣例（`dev`/`backtest` 已是此模式），改用同一慣例新增 `scalper` extra group，功能等價且更一致
+- 設計時發現「區間失效」邏輯若只在 FLAT 狀態檢查會有漏洞（持倉中價格突破區間不會被攔截，
+  只靠 2-tick 停損但停損距離可能大於區間邊界距離）→ 修正為持倉中也檢查突破，突破優先於停損
+
+**下一步**：
+1. 老闆本地：永豐申請模擬 API Key → 填 `scalper/.env`（複製自 `scalper/.env.example`）
+2. 老闆本地：`pip install ".[scalper]"` 驗證 shioaji 安裝（macOS 失敗則走 Docker 備援，見
+  scalper-spec.md §2）
+3. 老闆本地：盤中實測 `feed.py` 登入/訂閱，校正官方 API 呼叫方式
+4. 之後：S4（策略一補強）尚未動工，待下一輪處理
+
+**涉及檔案**：新增 `scalper/`（12 個 .py + `.env.example`）、`tests/unit/scalper/`（8 個測試檔）、
+`.dockerignore`；修改 `pyproject.toml`、`CLAUDE.md`、`docs/scalper-spec.md`、本檔
+
 ### 2026-07-05 — 新策略規格書落地（S4 台股趨勢確認 + 策略三股期刷單），待老闆核准
 
 **任務目標**：老闆要加兩個新策略，且實作將派給較弱模型照文件執行，因此先把討論結論

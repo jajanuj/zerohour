@@ -68,6 +68,8 @@
 | 老闆說「準備交接檔案」/「開始新對話」| `docs/harness/H-handover-procedure.md`（照 SOP 自動完成，不用逐項交代）|
 | 踩坑了 | 追加到 `docs/harness/LESSONS.md`（唯一可自由追加的檔）|
 | 想知道規則為什麼長這樣 | `docs/harness/A-diagnosis.md`（唯讀）|
+| 動 `scalper/`（策略三股期刷單）| `docs/scalper-spec.md`（獨立模組，只跑老闆本地機器，不進 Fly.io）|
+| 動 S4 台股趨勢確認因子（策略一補強）| `docs/strategy-s4-spec.md`（只調整 S3 的 BUY 倉位係數，不改進出邏輯）|
 
 ## 環境速查
 

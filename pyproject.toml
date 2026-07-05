@@ -37,6 +37,11 @@ dev = [
 backtest = [
     "vectorbt>=0.26.0",
 ]
+# 策略三（股期影線刷單）專用，只裝在老闆本地機器，禁止進生產 Docker image。
+# 版本以 pip index versions shioaji 於 2026-07-05 驗證（最新 1.5.5）。
+scalper = [
+    "shioaji>=1.5.0,<2.0.0",
+]
 
 [tool.setuptools.packages.find]
 where = ["."]

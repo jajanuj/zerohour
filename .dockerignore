@@ -1,0 +1,30 @@
+# 策略三（股期刷單）只跑老闆本地機器，硬性不進生產 image（見 docs/scalper-spec.md §2）
+scalper/
+
+# 開發/文件/測試，生產 runtime 不需要
+docs/
+tests/
+scripts/
+.claude/
+.github/
+
+# 版控與快取
+.git/
+.gitignore*
+.pytest_cache/
+.mypy_cache/
+.ruff_cache/
+__pycache__/
+*.pyc
+.venv/
+venv/
+
+# 憑證與本地資料（生產用 fly secrets，不靠 COPY 帶進 image）
+.env
+.env.*
+!.env.example
+*.db
+*.bak
+
+# 前端（若存在，production Dockerfile 不需要）
+dashboard/
