@@ -8,6 +8,30 @@
 
 ## 📍 最新狀態（新的寫最上面）
 
+### 2026-07-05 — 建立「交接檔案」SOP（觸發詞制度化）
+
+**任務目標**：老闆希望以後只要說「準備交接檔案」或「開始新對話」，模型就自動完成交接流程，
+不用每次重貼一長串步驟；且原本那串步驟裡有 `.claude/harness/06-HANDOVER-LETTER.md`、
+`npm run build/lint` 等**別的專案**的路徑與指令，需要改成本專案實際規格。
+
+**已完成到哪**：
+- ✅ 新增 [docs/harness/H-handover-procedure.md](harness/H-handover-procedure.md)：定義觸發詞、4 步驟 SOP
+  （更新 PROGRESS.md 頂部條目 → 踩坑檢查 → `py_compile`+`pytest`+`git status` 驗證 → commit+push）
+- ✅ [CLAUDE.md](../CLAUDE.md) 檔案路由表加一行指向 H 檔（老闆本輪對話明示同意修改 CLAUDE.md）
+- ✅ [docs/harness/README.md](harness/README.md) 索引補上 H 檔
+- ✅ SOP 內建紅線：踩坑教訓不得寫成「被權限/安全機制擋下就換方法繞過」——上一輪 session 曾因為
+  這樣寫被 auto-mode 分類器擋下 commit，已把這個判準寫進 H 檔 §2，避免下次重蹈
+- **涉及檔案**：`docs/harness/H-handover-procedure.md`（新增）、`CLAUDE.md`、`docs/harness/README.md`
+
+**下一步**：無待辦，這是一次性制度建立。以後老闆說「準備交接檔案」時，模型應直接照 H 檔執行，
+不需要老闆再貼步驟。
+
+**User 已核准**：本輪對話中，老闆明確要求建立此 SOP 並修正別專案路徑——視為對 H 檔新增與
+CLAUDE.md/README.md 路由更新的明示同意。
+
+**驗證**：`python -m py_compile`（改動的 .py 檔全過，本次無 .py 改動）、
+`pytest tests/unit -x -q` → 47 passed、`git status --short` 僅本次三個文件變更
+
 ### 2026-07-05 — 策略邏輯風控修復（第一批：讓已寫好的防線真的生效）【交接用完整版】
 
 **任務目標**：老闆要求「檢查目前策略邏輯，有沒有改善地方」→ 審查後發現三個「規則寫了但沒接上執行」的問題，

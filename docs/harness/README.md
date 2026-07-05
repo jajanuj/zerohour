@@ -14,7 +14,8 @@
 | `D-judgment-rubric.md` | 判斷力外化矩陣：停損/完成/熔斷判準 | 每次任務收尾前；卡關時 |
 | `E-delegation-templates.md` | 派工 Prompt 模板 ×4 | 呼叫 Agent tool 前複製套用 |
 | `F-knowledge-protocol.md` | 知識迭代協議：誰能改什麼、踩坑格式 | 想修改 harness 檔案前 |
-| `G-handover.md` | Fable 5 交接信：三件關鍵事 + 退化預警 | 新 session 接手大任務前 |
+| `G-handover.md` | Fable 5 交接信：三件關鍵事 + 退化預警（凍結）| 新 session 接手大任務前 |
+| `H-handover-procedure.md` | 「準備交接檔案」觸發詞的 SOP：更新 PROGRESS/LESSONS/驗證/commit | 老闆說「準備交接檔案」或「開始新對話」時 |
 | `LESSONS.md` | 踩坑紀錄（唯一可自由追加的檔案） | 踩坑後寫；開工前掃一眼 |
 | `IMPL-MAP.md` | trading-system-impl.md 章節行號地圖 | 需要查規格時，代替整讀 |
 

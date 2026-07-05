@@ -65,6 +65,7 @@
 | 派工 prompt 怎麼寫 | `docs/harness/E-delegation-templates.md` |
 | 想修改 harness 規則檔 | `docs/harness/F-knowledge-protocol.md`（先讀再動）|
 | 接手大任務前 | `docs/harness/G-handover.md` |
+| 老闆說「準備交接檔案」/「開始新對話」| `docs/harness/H-handover-procedure.md`（照 SOP 自動完成，不用逐項交代）|
 | 踩坑了 | 追加到 `docs/harness/LESSONS.md`（唯一可自由追加的檔）|
 | 想知道規則為什麼長這樣 | `docs/harness/A-diagnosis.md`（唯讀）|
 
