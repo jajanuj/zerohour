@@ -20,3 +20,4 @@
 | 2026-06 | 頁面卡「載入中」5 分鐘 | yfinance 無 timeout 保護，單一慢請求拖死整個 endpoint | 所有外部 IO 必包 `asyncio.wait_for`，timeout 後 `pool.shutdown(wait=False)` 否則 event loop 卡死 | de23a68 |
 | 2026-06 | 後端逾時回空 `{}`，前端所有格子永遠「計算中...」 | 前端只迭代回應內容，回應為空時迴圈不執行，loading 文字沒人清 | 前端渲染 loading 佔位後，回呼裡必須有「清除所有未更新佔位」的收尾步驟（成功與 catch 都要）| d178cae |
 | 2026-07 | 債券 ETF 股價顯示 N/A | 00679B 等低流動性 ETF 好幾天沒成交，`history("3d")` 抓不到資料 | 抓價 fallback 要逐步放寬回看期 5d→1mo→3mo | e0fa40e |
+| 2026-07 | scalper 回測測試失敗（少了預期的成交記錄） | 合成測試事件的時間戳用各自獨立的 `base + timedelta(...)` 拼湊，其中一筆算出來反而早於前一筆，事件順序顛倒 | 建構 replay/backtest 用的合成事件序列，一律用單一遞增游標變數疊加 timedelta，禁止從同一個 base 各自獨立算相對偏移 | 59786a8 |

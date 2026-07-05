@@ -8,13 +8,13 @@
 
 ## 📍 最新狀態（新的寫最上面）
 
-### 2026-07-05 — 策略三（scalper）Phase 0 核心模組實作完成，老闆已核准 A1-A8/B1-B5
+### 2026-07-05 — 策略三（scalper）Phase 0 核心模組實作完成【交接用完整版】
 
 **任務目標**：老闆核准 scalper-spec.md 全部 A 項與 strategy-s4-spec.md 全部 B 項（A7 真金下單
 除外，設計上本就排除在外），指示「先完成策略三」。本輪建立完整 `scalper/` 模組（Phase 0 骨架 +
 Phase 1 錄製器 + Phase 2 悲觀回測引擎），S4（策略一）尚未動工，留待下一輪。
 
-**已完成到哪**：
+**已完成到哪**（commit `59786a8`，已 push，CI + Deploy 皆綠燈，煙霧測試 200）：
 - ✅ 新增 `scalper/` 獨立模組（不 import src/，不進 Fly.io 部署）：
   `config.py`、`range_engine.py`（60分K/參考區間）、`grid.py`（v0規則表決策核心：進場/
   逆選擇過濾/停損/區間失效/暫停恢復）、`risk_guard.py`（熔斷/庫存上限/連虧冷卻/結算日過濾）、
@@ -29,23 +29,39 @@ Phase 1 錄製器 + Phase 2 悲觀回測引擎），S4（策略一）尚未動�
 - ✅ `tests/unit/scalper/`：64 個新測試，覆蓋 §12 要求全部核心邏輯（含跨日/缺K、逆選擇過濾、
   停利/停損/區間失效/暫停恢復、風控熔斷、悲觀成交模型的三種成交/不成交情境）
 - ✅ `docs/scalper-spec.md` §0 更新核准狀態與 A2 修正說明；CLAUDE.md 路由表加 scalper 與 S4 兩行
-- ✅ 驗證：`python -m py_compile` 全部 12 個新 .py 檔案通過；`pytest tests/unit -x -q` → 115 passed
 
 **遇到的問題**：
 - 規格書假設用 `requirements-scalper.txt`，實測發現專案已用 `pyproject.toml` optional-dependencies
   慣例（`dev`/`backtest` 已是此模式），改用同一慣例新增 `scalper` extra group，功能等價且更一致
 - 設計時發現「區間失效」邏輯若只在 FLAT 狀態檢查會有漏洞（持倉中價格突破區間不會被攔截，
   只靠 2-tick 停損但停損距離可能大於區間邊界距離）→ 修正為持倉中也檢查突破，突破優先於停損
+- 寫 `test_replay.py` 時因為用各自獨立的 `timedelta` 偏移量拼事件時間戳，導致事件順序顛倒
+  （已追加進 LESSONS.md，見下方踩坑檢查）
 
-**下一步**：
+**下一步 — 已核准可做**：
 1. 老闆本地：永豐申請模擬 API Key → 填 `scalper/.env`（複製自 `scalper/.env.example`）
 2. 老闆本地：`pip install ".[scalper]"` 驗證 shioaji 安裝（macOS 失敗則走 Docker 備援，見
   scalper-spec.md §2）
-3. 老闆本地：盤中實測 `feed.py` 登入/訂閱，校正官方 API 呼叫方式
-4. 之後：S4（策略一補強）尚未動工，待下一輪處理
+3. 老闆本地：盤中實測 `feed.py` 登入/訂閱，校正官方 API 呼叫方式，回饋給模型修正
+4. 老闆本地：跑 `contracts.py` 標的流動性排行，選定 2-3 檔進 Phase 1 錄製名單
+5. S4（策略一補強）：B1-B5 已核准，規格見 strategy-s4-spec.md，可隨時開工（下一輪處理）
+
+**下一步 — 待老闆決策**：
+- `docs/PROGRESS.md` 現已超過 250 行精簡觸發線（F協議§4），精簡前依規則須先問老闆同意，
+  上一輪已提出、老闆尚未回覆是否要精簡
+- A7（真金下單）：Phase 4 前才需要決策，目前不急
+
+**User 已核准 vs 尚未核准**：
+- ✅ 已核准：scalper-spec.md A1-A6、A8（A7 明確排除，鎖定）；strategy-s4-spec.md B1-B5 全部
+- ⬜ 尚未核准：A7 真金下單（規格設計上就排除在外，需屆時另案取得明示同意）；
+  `scalper/` 內任何真金下單代碼路徑（目前 `ShioajiBrokerAdapter` 全數硬編碼 raise，
+  移除這道 raise 需要 A7 核准後才可進行）
 
 **涉及檔案**：新增 `scalper/`（12 個 .py + `.env.example`）、`tests/unit/scalper/`（8 個測試檔）、
 `.dockerignore`；修改 `pyproject.toml`、`CLAUDE.md`、`docs/scalper-spec.md`、本檔
+
+**驗證**（交接時重跑確認狀態未變）：`python -m pytest tests/unit -x -q` → 115 passed；
+`git status --short` → clean（本輪純交接文件整理，無新增/修改 .py 檔）
 
 ### 2026-07-05 — 新策略規格書落地（S4 台股趨勢確認 + 策略三股期刷單），待老闆核准
 
