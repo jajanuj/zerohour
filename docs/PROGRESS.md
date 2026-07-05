@@ -8,6 +8,38 @@
 
 ## 📍 最新狀態（新的寫最上面）
 
+### 2026-07-05 — 報表可觀測性優化 6 項全部完成（計畫：docs/report-optimization-plan.md）
+
+**任務目標**：老闆核准借鑑外部 AI 交易報表的 6 項設計（逐條件明細/品質註記/決策下一步/
+Run 資訊/新面孔標記/關鍵價位），全部為觀測層工作，訊號公式與決策矩陣零變更。
+
+**已完成**（6 個 feature commit，每個都煙霧測試 200；`2729b00`→`5097cd3`→`b7e3d6a`→
+`f4791db`→`d5979e4`→Phase F）：
+- ✅ **A** schema：trend_signals/time_diff_signals 加 `conditions`(JSON)、time_diff_signals 加
+  `next_step`、watchlist 加 `is_new`；走 `database/__init__.py` 啟動時 idempotent ALTER 慣例
+- ✅ **B** S1/S2/S3 逐條件明細（name/label/passed/actual/threshold）：訊號 dataclass → 落庫 →
+  API → dashboard chips；快取 key 換版 v2
+- ✅ **D** 資料品質註記：共用 `safe_change_pct`，`/signals/current` 與 `/portfolio` 回
+  `quality_notes`（指數缺值/抓價 fallback/逾時不再靜默）；**順帶修復 tasks.py 三處
+  `or 0.0` 擋不住 NaN 舊坑**（generate_signal / check_black_swan / run_market_context，
+  LESSONS 2026-06 同型坑，routes 當時修了 tasks 全漏——黑天鵝偵測拿 NaN 比較會靜默不觸發）
+- ✅ **C** `CombinedSignal.next_step`（四分支具體文案）+ `key_levels`（MA200 緩衝上下緣、
+  BUY 時 0050 進場/停損價，timeout 10s + isfinite 防護）；快取 key 換版 v3；
+  aggregator 新增兩個僅供文案的 buffer 參數（有測試守護不影響決策）
+- ✅ **E** watchlist 新面孔：`compute_new_faces` 純函數（首期全 False），NEW 徽章 +
+  Discord ★ 前綴
+- ✅ **F** `from_cache` 快取徽章、訊號歷史 #id、頁尾免責聲明
+- ✅ 測試 115 → 153（新增 38 個，既有測試零改動）；本地 `zerohour_dev.db` 已刪除重建
+
+**與計畫的偏差**（均已在對應 commit 註明）：
+1. portfolio 品質註記用獨立 `portfolio-quality` div（計畫寫 portfolio-msg，但該元素被
+   CSV 匯入訊息佔用，共用會互相覆蓋）
+2. NaN 修復範圍從計畫的 generate_signal 一處擴大到三處（同 bug 同修法，黑天鵝那處最危險）
+3. Phase E 測試改測抽出的純函數（repo 沒有現成的 DB 測試模式，不為此新建）
+
+**下一步**：等下次訊號生成（04:05）與週日選股後，檢查 dashboard 條件 chips、
+next_step、新面孔徽章的實際顯示；S4（策略一台股趨勢確認）仍待動工。
+
 ### 2026-07-05 — 策略三（scalper）Phase 0 核心模組實作完成【交接用完整版】
 
 **任務目標**：老闆核准 scalper-spec.md 全部 A 項與 strategy-s4-spec.md 全部 B 項（A7 真金下單
