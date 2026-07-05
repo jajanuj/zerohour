@@ -125,6 +125,11 @@ def fetch_us_market_data():
 @celery_app.task(name="src.tasks.generate_signal")
 def generate_signal():
     """04:05 生成 S1+S2+S3 訊號，若需要則執行 paper 下單。"""
+    from .data.market_calendar import skip_if_non_trading_day
+    skipped = skip_if_non_trading_day("generate_signal")
+    if skipped:
+        return skipped
+
     from .data.fetcher import USMarketFetcher, TWMarketFetcher
     from .data.normalizer import DataNormalizer, safe_change_pct
     from .signals.time_diff import TimeDiffSignalGenerator
@@ -354,6 +359,11 @@ def generate_signal():
 @celery_app.task(name="src.tasks.update_positions")
 def update_positions():
     """13:35 台股收盤後：更新持倉現價 + 存績效快照 + 觸發停損。"""
+    from .data.market_calendar import skip_if_non_trading_day
+    skipped = skip_if_non_trading_day("update_positions")
+    if skipped:
+        return skipped
+
     from .data.fetcher import TWMarketFetcher
     from .database import sync_run
     from .database.helpers import (
@@ -436,6 +446,11 @@ def update_positions():
 @celery_app.task(name="src.tasks.run_daily_review")
 def run_daily_review():
     """13:40 每日覆盤：Layer1 合規 → Layer2 品質 → Layer3 AI → DB → Discord。"""
+    from .data.market_calendar import skip_if_non_trading_day
+    skipped = skip_if_non_trading_day("run_daily_review")
+    if skipped:
+        return skipped
+
     from datetime import date
     from .database import sync_run
     from .database.helpers import (
@@ -759,6 +774,11 @@ def check_black_swan():
 @celery_app.task(name="src.tasks.run_market_context")
 def run_market_context():
     """04:10 市場背景 Agent — 解讀美股收盤背景對台股的影響。"""
+    from .data.market_calendar import skip_if_non_trading_day
+    skipped = skip_if_non_trading_day("run_market_context")
+    if skipped:
+        return skipped
+
     from .agents.market_context_agent import run_market_context_agent
     from .database import sync_run
     from .database.helpers import save_market_context

@@ -34,6 +34,12 @@ class Settings(BaseSettings):
     # Gemini API
     gemini_api_key: str = Field(default="")
 
+    # API 認證（空字串 = 停用驗證，供本地開發；生產由老闆 fly secrets set API_KEY=...）
+    api_key: str = Field(default="")
+
+    # 台股國定假日（YYYY-MM-DD 逗號分隔；週末已自動過濾，此清單只補假日）
+    tw_market_holidays: str = Field(default="")
+
     # Trading parameters
     trading_mode: str = Field(default="paper")  # paper | live | observe
     max_position_pct: float = Field(default=0.30)
