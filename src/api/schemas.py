@@ -42,6 +42,7 @@ class CurrentSignalsResponse(BaseModel):
     combined: Optional[CombinedSignalSchema] = None
     updated_at: Optional[datetime] = None  # 訊號計算時間（快取命中時為快取建立時間）
     quality_notes: list[dict] = []  # 資料品質註記（§1.2）
+    from_cache: bool = False  # 本次回應是否來自 Redis 快取（報表優化 Phase F）
 
 
 class PositionSchema(BaseModel):
@@ -153,6 +154,7 @@ class PerformanceHistoryItem(BaseModel):
 
 
 class SignalHistoryItem(BaseModel):
+    id: int = 0  # DB 記錄編號（Run 追溯用，報表優化 Phase F）
     date: str
     direction: str
     confidence: float

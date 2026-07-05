@@ -769,6 +769,7 @@ async def get_signal_history(days: int = 30) -> list[dict]:
             )
             trend = trend_result.scalars().first()
             output.append({
+                "id": r.id,
                 "date": r.generated_at.strftime("%Y-%m-%d"),
                 "direction": r.direction,
                 "confidence": float(r.confidence or 0),

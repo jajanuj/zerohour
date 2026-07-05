@@ -55,7 +55,9 @@ async def get_current_signals():
         try:
             _cached = _rc.get("zrh:sig:current:v3")
             if _cached:
-                return CurrentSignalsResponse.model_validate_json(_cached)
+                return CurrentSignalsResponse.model_validate_json(_cached).model_copy(
+                    update={"from_cache": True}
+                )
         except Exception:
             pass
 

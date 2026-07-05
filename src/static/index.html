@@ -187,6 +187,7 @@
   <div class="navbar-right">
     <span class="mode-badge" id="mode-badge">paper</span>
     <span class="last-update"><i class="ti ti-clock" aria-hidden="true" style="font-size:13px"></i><span id="last-update-time">—</span></span>
+    <span id="cache-badge" class="badge badge-gray" style="display:none" title="訊號來自 Redis 快取（30 分鐘內）">快取</span>
     <button class="btn btn-primary" id="refresh-btn" onclick="refreshAll()">
       <i class="ti ti-refresh" aria-hidden="true"></i>更新訊號
     </button>
@@ -691,6 +692,9 @@ async function loadSignals() {
     const td = d.time_diff;
     const comb = d.combined;
 
+    const cacheBadge = document.getElementById('cache-badge');
+    if (cacheBadge) cacheBadge.style.display = d.from_cache ? '' : 'none';
+
     if (!trend || !td || !comb) {
       throw new Error('訊號資料不完整（API 回傳空值）');
     }
@@ -803,6 +807,8 @@ async function loadSignals() {
       const el = document.getElementById(id);
       if (el) el.innerHTML = '';
     });
+    const cacheBadge = document.getElementById('cache-badge');
+    if (cacheBadge) cacheBadge.style.display = 'none';
   }
 }
 
@@ -1503,7 +1509,7 @@ async function loadSignalHistory() {
         <tbody>
           ${data.map(s => `
             <tr>
-              <td style="font-variant-numeric:tabular-nums">${s.date}</td>
+              <td style="font-variant-numeric:tabular-nums">${s.date}${s.id ? ` <span style="font-size:10px;color:var(--text-light)">#${s.id}</span>` : ''}</td>
               <td><span class="badge badge-${dirCls[s.direction]||'gray'}">${dirLabel[s.direction]||s.direction}</span></td>
               <td>${(s.confidence*100).toFixed(0)}%</td>
               <td class="${s.nasdaq_change_pct>0.2?'bull':s.nasdaq_change_pct<-0.2?'bear':''}">${s.nasdaq_change_pct>=0?'+':''}${s.nasdaq_change_pct.toFixed(2)}%</td>
@@ -1664,5 +1670,6 @@ async function loadMode() {
 loadMode();
 refreshAll();
 </script>
+<footer style="text-align:center;font-size:11px;color:var(--text-light);padding:18px 0 24px">本內容由系統自動生成，僅供參考，不構成任何投資建議或操作指示</footer>
 </body>
 </html>
