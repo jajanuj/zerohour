@@ -8,7 +8,30 @@ env:
   FLY_API_TOKEN: ${{ secrets.FLY_API_TOKEN }}
 
 jobs:
+  # 測試閘門（A-diagnosis.md 痛點三，老闆 2026-07-06 核准）：
+  # 單元測試不過 → 不部署。安裝步驟與 test.yml 對齊。
+  test:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+          cache: "pip"
+
+      - name: Install dependencies
+        run: pip install -e ".[dev]"
+
+      - name: Run unit tests
+        env:
+          DATABASE_URL: sqlite+aiosqlite:///./test.db
+          REDIS_URL: redis://localhost:6379/0
+          TRADING_MODE: paper
+        run: python -m pytest tests/unit -x -q
+
   deploy:
+    needs: [test]
     runs-on: ubuntu-latest
 
     steps:
