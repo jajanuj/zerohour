@@ -56,7 +56,7 @@
 - 尚未核准：上面「下一步」1–3 項
 
 **驗證**：`python -m py_compile`（8 個改動檔案全過）、`python -m pytest tests/unit -x -q` → 47 passed；
-`git status --short` 見下方 commit 前狀態
+`git status` 乾淨。**Commit**：ffa3506，已 push。**部署驗證**：`curl /api/v1/positions` → 200
 
 ### 2026-07-05 — 建立「交接檔案」SOP（觸發詞制度化）
 
