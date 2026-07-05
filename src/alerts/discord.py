@@ -13,6 +13,7 @@ _COLOR = {
     "BUY":       0x57F287,  # green
     "SELL":      0xED4245,  # red
     "HOLD":      0x5865F2,  # blue
+    "EXIT_ALL":  0xED4245,  # red
     "WARNING":   0xFEE75C,  # yellow
     "CRITICAL":  0xED4245,  # red
     "INFO":      0x5865F2,  # blue
@@ -51,7 +52,7 @@ class DiscordAlerter:
         reason: str,
     ) -> bool:
         color = _COLOR.get(action, _COLOR["INFO"])
-        action_label = {"BUY": "做多", "SELL": "出場", "HOLD": "觀望"}.get(action, action)
+        action_label = {"BUY": "做多", "SELL": "出場", "HOLD": "觀望", "EXIT_ALL": "強制清倉"}.get(action, action)
 
         embed = {
             "title": f"ZeroHour 訊號 — {action_label} {symbol}",

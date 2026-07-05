@@ -137,12 +137,12 @@ def generate_signal():
     from .signals.ma200_filter import MA200Filter
     from .signals.aggregator import SignalAggregator
     from .risk.position_sizer import PositionSizer
-    from .risk.stop_loss import StopLossManager
     from .database import sync_run
     from .database.helpers import (
         save_time_diff_signal,
         save_trend_signal,
         get_open_positions,
+        get_cash_balance,
         open_position,
         close_position,
     )
@@ -171,9 +171,13 @@ def generate_signal():
         trend = ma_filter.calculate(qqq_df, "QQQ")
 
         # S3
-        agg = SignalAggregator()
+        agg = SignalAggregator(
+            max_position_pct=settings.max_position_pct,
+            index_stop_loss_pct=settings.index_stop_loss_pct,
+            trailing_stop_pct=settings.trailing_stop_pct,
+        )
         combined = agg.aggregate(trend, time_diff)
-        action = combined.final_action.value  # BUY / SELL / HOLD
+        action = combined.final_action.value  # BUY / SELL / HOLD / EXIT_ALL
 
         # Save signals to DB
         signal_id = sync_run(save_time_diff_signal(
@@ -201,13 +205,22 @@ def generate_signal():
 
         # Paper 下單
         open_positions = sync_run(get_open_positions())
-        has_position = any(p["symbol"] == SYMBOL for p in open_positions)
+        symbol_position = next((p for p in open_positions if p["symbol"] == SYMBOL), None)
+        has_position = symbol_position is not None
+
+        # 帳戶現況（現金 + 持倉市值），供信心加權倉位計算與曝險檢查用
+        positions_value = sum(
+            p["quantity"] * (p["current_price"] or p["avg_entry_price"])
+            for p in open_positions
+        )
+        cash = sync_run(get_cash_balance(INITIAL_CAPITAL))
+        account_equity = cash + positions_value
 
         from .alerts.discord import get_alerter
         alerter = get_alerter()
 
-        # 推播訊號（BUY/SELL 才發）
-        if action in ("BUY", "SELL"):
+        # 推播訊號（BUY/SELL/EXIT_ALL 才發；HOLD 不推播避免疲勞轟炸）
+        if action in ("BUY", "SELL", "EXIT_ALL"):
             sync_run(alerter.signal_alert(
                 action=action,
                 symbol=SYMBOL,
@@ -223,26 +236,39 @@ def generate_signal():
             tw_df = tw_fetcher.get_historical(SYMBOL, period="5d")
             if not tw_df.empty:
                 fill_price = float(tw_df.iloc[-1]["close"])
-                quantity = INITIAL_CAPITAL * settings.max_position_pct / fill_price
-                stop_loss = fill_price * (1 - settings.index_stop_loss_pct)
+                sizer = PositionSizer(
+                    max_position_pct=settings.max_position_pct,
+                    max_total_exposure_pct=settings.max_total_exposure_pct,
+                )
+                sizing = sizer.calculate(
+                    account_equity=account_equity,
+                    current_exposure=positions_value,
+                    suggested_pct=combined.suggested_position_pct,
+                    current_price=fill_price,
+                )
+                if sizing["blocked"]:
+                    logger.warning(f"Paper BUY blocked by risk sizing: {sizing['reason']}")
+                else:
+                    quantity = round(sizing["shares"], 0)
+                    stop_loss = fill_price * (1 - settings.index_stop_loss_pct)
 
-                sync_run(open_position(
-                    signal_id=signal_id,
-                    symbol=SYMBOL,
-                    quantity=round(quantity, 0),
-                    fill_price=fill_price,
-                    stop_loss_price=round(stop_loss, 2),
-                ))
-                sync_run(alerter.trade_executed(
-                    direction="BUY",
-                    symbol=SYMBOL,
-                    quantity=round(quantity, 0),
-                    fill_price=fill_price,
-                    stop_loss_price=round(stop_loss, 2),
-                ))
-                logger.info(f"Paper BUY: {quantity:.0f} {SYMBOL} @ {fill_price}")
+                    sync_run(open_position(
+                        signal_id=signal_id,
+                        symbol=SYMBOL,
+                        quantity=quantity,
+                        fill_price=fill_price,
+                        stop_loss_price=round(stop_loss, 2),
+                    ))
+                    sync_run(alerter.trade_executed(
+                        direction="BUY",
+                        symbol=SYMBOL,
+                        quantity=quantity,
+                        fill_price=fill_price,
+                        stop_loss_price=round(stop_loss, 2),
+                    ))
+                    logger.info(f"Paper BUY: {quantity:.0f} {SYMBOL} @ {fill_price}（帳戶淨值 {account_equity:,.0f}）")
 
-        elif action == "SELL" and has_position:
+        elif action in ("SELL", "EXIT_ALL") and has_position:
             tw_df = tw_fetcher.get_historical(SYMBOL, period="5d")
             if not tw_df.empty:
                 fill_price = float(tw_df.iloc[-1]["close"])
@@ -254,10 +280,10 @@ def generate_signal():
                 sync_run(alerter.trade_executed(
                     direction="SELL",
                     symbol=SYMBOL,
-                    quantity=has_position and open_positions[0]["quantity"] or 0,
+                    quantity=symbol_position["quantity"],
                     fill_price=fill_price,
                 ))
-                logger.info(f"Paper SELL: {SYMBOL} @ {fill_price}")
+                logger.info(f"Paper {action}: {SYMBOL} @ {fill_price}")
 
         return {
             "action": action,

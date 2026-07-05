@@ -8,6 +8,14 @@
 
 ## 📍 最新狀態（新的寫最上面）
 
+### 2026-07-05 — 策略邏輯風控修復（第一批：讓已寫好的防線真的生效）
+- ✅ EXIT_ALL 接上執行與推播 — 200MA 轉空時過去完全靜默不清倉，`src/tasks.py generate_signal()` 只處理 BUY/SELL；現改為 SELL/EXIT_ALL 共用平倉分支，且 signal_alert 加入 EXIT_ALL；前端 [index.html](../src/static/index.html) 加對應徽章與警示文案
+- ✅ 倉位計算改用帳戶現況＋信心加權 — 過去用固定 `INITIAL_CAPITAL × max_position_pct`，虧損後仍照初始 100 萬開倉；改為 `PositionSizer` 讀當前現金+持倉市值，套用 `combined.suggested_position_pct`（信心加權 25~40%）並檢查總曝險上限，超限時記警告日誌並跳過下單
+- ✅ SignalAggregator 參數統一走 settings — `tasks.py` 與 `routes.py` 過去用預設值 `max_position_pct=0.40`，與 `.env` 的 `max_position_pct=0.30` 不同步（Dashboard 顯示與實際下單倉位不一致）；兩處都改為顯式傳入 settings
+- ✅ 順手修正 SELL 推播抓錯持倉數量的 bug（`open_positions[0]` → 對應 symbol 的部位）
+- ⏳ 第二批待老闆決策：S1 日檢 vs 規格書月檢 + 緩衝帶、PositionSizer lot_size 超買、熔斷狀態落 Redis（見對話中的策略邏輯審查報告）
+- 🧪 驗證：`python -m pytest tests/unit -x -q` 47 passed
+
 ### 2026-07-04 — Harness 制度建設（Fable 5 一次性 session）
 - ✅ 建立 `docs/harness/` 制度檔案（A–G + LESSONS + IMPL-MAP），CLAUDE.md 重寫為路由中心
 - ✅ 防錯：.gitignore 補 `.env*`/`*.db`；`.claude/settings.json` deny 高危 git 指令

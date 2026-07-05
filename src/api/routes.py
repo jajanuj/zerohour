@@ -97,8 +97,12 @@ async def get_current_signals():
         ma_filter = MA200Filter(period=settings.ma_period)
         trend = ma_filter.calculate(qqq_df, "QQQ")
 
-        # S3：組合決策
-        agg = SignalAggregator()
+        # S3：組合決策（參數與 tasks.generate_signal 一致，避免 Dashboard 顯示與實際下單不同步）
+        agg = SignalAggregator(
+            max_position_pct=settings.max_position_pct,
+            index_stop_loss_pct=settings.index_stop_loss_pct,
+            trailing_stop_pct=settings.trailing_stop_pct,
+        )
         combined = agg.aggregate(trend, time_diff)
 
         _resp = CurrentSignalsResponse(

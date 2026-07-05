@@ -652,8 +652,8 @@ function setBar(barId, valId, pct, maxPct=3) {
 }
 
 function actionBadge(action) {
-  const map = { BUY:'buy', SELL:'sell', HOLD:'hold', WATCH:'hold', NO_SIGNAL:'gray' };
-  const labelMap = { BUY:'買進 0050', SELL:'賣出 0050', HOLD:'持倉不動', WATCH:'觀察', NO_SIGNAL:'無訊號' };
+  const map = { BUY:'buy', SELL:'sell', HOLD:'hold', WATCH:'hold', NO_SIGNAL:'gray', EXIT_ALL:'sell' };
+  const labelMap = { BUY:'買進 0050', SELL:'賣出 0050', HOLD:'持倉不動', WATCH:'觀察', NO_SIGNAL:'無訊號', EXIT_ALL:'強制清倉' };
   return { cls: 'badge-' + (map[action] || 'gray'), label: labelMap[action] || action };
 }
 
@@ -689,7 +689,7 @@ async function loadSignals() {
     const { cls, label } = actionBadge(action);
     const s3 = document.getElementById('s3-val');
     s3.textContent = label;
-    s3.className = 'sig-value ' + (action === 'BUY' ? 'blue' : action === 'SELL' ? 'bear' : 'neut');
+    s3.className = 'sig-value ' + (action === 'BUY' ? 'blue' : (action === 'SELL' || action === 'EXIT_ALL') ? 'bear' : 'neut');
     document.getElementById('s3-sub').textContent = `建議倉位 ${(comb.suggested_position_pct * 100).toFixed(0)}% ｜ 停損 ${fmt(comb.stop_loss_pct * -1)}`;
 
     document.getElementById('s3-badge').textContent = label;
@@ -718,6 +718,8 @@ async function loadSignals() {
       : '';
     if (action === 'BUY') {
       announce.innerHTML = `<div class="announce announce-info"><i class="ti ti-bell" aria-hidden="true"></i><span>今日訊號：<strong>買進 ${comb.symbol || '0050'}</strong> — ${comb.reason} <span style="opacity:.6;font-size:11px">${updatedLabel}</span></span></div>`;
+    } else if (action === 'EXIT_ALL') {
+      announce.innerHTML = `<div class="announce announce-warn"><i class="ti ti-alert-triangle" aria-hidden="true"></i><span><strong>200MA 轉空，強制清倉</strong> — ${comb.reason} <span style="opacity:.6;font-size:11px">${updatedLabel}</span></span></div>`;
     } else {
       announce.innerHTML = `<div class="announce announce-info"><i class="ti ti-info-circle" aria-hidden="true"></i><span>今日無進場訊號 — 系統持續監控中 <span style="opacity:.6;font-size:11px">${updatedLabel}</span></span></div>`;
     }
