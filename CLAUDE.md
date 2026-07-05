@@ -70,6 +70,7 @@
 | 想知道規則為什麼長這樣 | `docs/harness/A-diagnosis.md`（唯讀）|
 | 動 `scalper/`（策略三股期刷單）| `docs/scalper-spec.md`（獨立模組，只跑老闆本地機器，不進 Fly.io）|
 | 動 S4 台股趨勢確認因子（策略一補強）| `docs/strategy-s4-spec.md`（只調整 S3 的 BUY 倉位係數，不改進出邏輯）|
+| 做報表可觀測性優化（條件明細/品質註記/下一步等）| `docs/report-optimization-plan.md`（純觀測層，禁改訊號公式與決策）|
 
 ## 環境速查
 
