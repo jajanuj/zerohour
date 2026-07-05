@@ -99,6 +99,19 @@ async def save_trend_signal(
         ))
 
 
+async def get_latest_trend_state(symbol: str) -> str | None:
+    """Return the most recently saved S1 trend state for symbol, or None if no history yet."""
+    async with get_session() as session:
+        result = await session.execute(
+            select(TrendSignal)
+            .where(TrendSignal.symbol == symbol)
+            .order_by(desc(TrendSignal.id))
+            .limit(1)
+        )
+        row = result.scalars().first()
+        return row.state if row else None
+
+
 async def get_open_positions() -> list[dict]:
     """Return latest open position snapshot per symbol (quantity > 0)."""
     async with get_session() as session:

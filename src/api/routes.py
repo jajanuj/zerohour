@@ -45,8 +45,9 @@ async def get_current_signals():
     from ..data.fetcher import USMarketFetcher, TWMarketFetcher
     from ..data.normalizer import DataNormalizer
     from ..signals.time_diff import TimeDiffSignalGenerator
-    from ..signals.ma200_filter import MA200Filter
+    from ..signals.ma200_filter import MA200Filter, TrendState
     from ..signals.aggregator import SignalAggregator
+    from ..database.helpers import get_latest_trend_state
 
     # ── Redis 快取檢查 ────────────────────────────────────────────────
     _rc = _price_cache()
@@ -94,8 +95,14 @@ async def get_current_signals():
             None, lambda: fetcher.get_historical("qqq", period="2y")
         )
         qqq_df = norm.normalize_ohlcv(qqq_raw)
-        ma_filter = MA200Filter(period=settings.ma_period)
-        trend = ma_filter.calculate(qqq_df, "QQQ")
+        ma_filter = MA200Filter(
+            period=settings.ma_period,
+            exit_buffer_pct=settings.ma200_exit_buffer_pct,
+            enter_buffer_pct=settings.ma200_enter_buffer_pct,
+        )
+        prev_state_str = await get_latest_trend_state("QQQ")
+        prev_state = TrendState(prev_state_str) if prev_state_str else None
+        trend = ma_filter.calculate(qqq_df, "QQQ", prev_state=prev_state)
 
         # S3：組合決策（參數與 tasks.generate_signal 一致，避免 Dashboard 顯示與實際下單不同步）
         agg = SignalAggregator(

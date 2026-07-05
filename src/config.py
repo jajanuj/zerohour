@@ -40,6 +40,8 @@ class Settings(BaseSettings):
     max_total_exposure_pct: float = Field(default=0.80)
     us_signal_threshold: float = Field(default=1.5)
     ma_period: int = Field(default=200)
+    ma200_exit_buffer_pct: float = Field(default=0.02)
+    ma200_enter_buffer_pct: float = Field(default=0.02)
     index_stop_loss_pct: float = Field(default=0.12)
     trailing_stop_pct: float = Field(default=0.15)
     min_confidence: float = Field(default=0.6)

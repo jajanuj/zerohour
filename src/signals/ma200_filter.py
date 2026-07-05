@@ -29,18 +29,29 @@ class MA200Filter:
     """
     200 日移動平均線趨勢過濾系統。
 
-    規則：每月最後一個交易日收盤時判斷。
-    收盤價 > 200MA → BULL；< 200MA → BEAR。
+    規則：每日收盤判斷，收盤價 > 200MA → BULL；< 200MA → BEAR。
+    可選加緩衝帶（hysteresis）：帶入 prev_state 時，出場需跌破
+    MA200×(1-exit_buffer_pct)、重新進場需站上 MA200×(1+enter_buffer_pct)，
+    帶內維持前一狀態，防止價格貼線時天天翻多翻空。
+    未帶入 prev_state（如回測逐日重算、無歷史狀態時）則退回即時交叉判斷。
     """
 
-    def __init__(self, period: int = 200):
+    def __init__(
+        self,
+        period: int = 200,
+        exit_buffer_pct: float = 0.0,
+        enter_buffer_pct: float = 0.0,
+    ):
         self.period = period
+        self.exit_buffer_pct = exit_buffer_pct
+        self.enter_buffer_pct = enter_buffer_pct
 
     def calculate(
         self,
         price_data: pd.DataFrame,
         symbol: str,
         check_date: Optional[pd.Timestamp] = None,
+        prev_state: Optional[TrendState] = None,
     ) -> MA200Signal:
         if len(price_data) < self.period:
             logger.warning(f"{symbol}: 資料不足 {len(price_data)} 筆，需要至少 {self.period} 筆")
@@ -83,7 +94,16 @@ class MA200Filter:
             ma200 = float(ma200_val)
             distance_pct = (current_price - ma200) / ma200 * 100
 
-        is_newly_crossed = self._check_newly_crossed(df, idx, state)
+        if state != TrendState.UNDEFINED and prev_state not in (None, TrendState.UNDEFINED):
+            lower = ma200 * (1 - self.exit_buffer_pct)
+            upper = ma200 * (1 + self.enter_buffer_pct)
+            if prev_state == TrendState.BULL:
+                state = TrendState.BEAR if current_price < lower else TrendState.BULL
+            else:  # prev_state == BEAR
+                state = TrendState.BULL if current_price > upper else TrendState.BEAR
+            is_newly_crossed = state != prev_state
+        else:
+            is_newly_crossed = self._check_newly_crossed(df, idx, state)
 
         return MA200Signal(
             symbol=symbol,

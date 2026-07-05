@@ -8,6 +8,56 @@
 
 ## 📍 最新狀態（新的寫最上面）
 
+### 2026-07-05 — S1 判斷週期定案：每日 + 2%/2% 緩衝帶（第二批風控項目 1）
+
+**任務目標**：老闆要求分析 S1（200MA 趨勢過濾）該維持「每日」判斷還是照規格書改回「月底」判斷。
+審查後發現：規格書一直寫的是月底，但生產環境從未真的接上月底邏輯（`check_monthly_trend` 只寫 DB、
+不參與交易決策），實戰跑的、也是回測驗證過的都是「每日」。用回測引擎對照 6 組緩衝參數（0~3%）後，
+老闆核准採用**每日判斷 + 出場緩衝 2% + 進場緩衝 2%**，並核准同步更新規格書與移除 `check_monthly_trend`。
+
+**已完成到哪**：
+- ✅ `src/signals/ma200_filter.py`：`MA200Filter` 加 `exit_buffer_pct`/`enter_buffer_pct` 建構參數與
+  `calculate()` 的 `prev_state` 參數；帶入 `prev_state` 時套用緩衝帶（hysteresis），未帶入時退回原本
+  即時交叉判斷（向後相容，回測引擎等既有呼叫方不受影響）
+- ✅ `src/config.py` 新增 `ma200_exit_buffer_pct`/`ma200_enter_buffer_pct`（預設各 0.02），`.env.example`
+  補上對應範例
+- ✅ `src/database/helpers.py` 新增 `get_latest_trend_state(symbol)`：讀 `trend_signals` 表最新一筆狀態，
+  供每日判斷時取得「前一日狀態」（沿用既有表，無 schema 異動）
+- ✅ `src/tasks.py generate_signal()` 與 `src/api/routes.py get_current_signals()` 都接上緩衝帶邏輯
+  （沿用第一批「Dashboard 顯示與實際下單參數必須一致」的原則）
+- ✅ 移除 `src/tasks.py` 的 `check_monthly_trend` 任務與其 `monthly-trend-check` 排程（已確認無下游使用，
+  移除後同步清掉沒用到的 `calendar` import）
+- ✅ 規格書 `docs/trading-system-impl.md` §1 表格、每日時程圖、§4.1、§14 文件異動紀錄同步更新為
+  「每日 + 緩衝帶」，並記錄決策理由；`docs/harness/IMPL-MAP.md` 章節行號重新校準（規格書改動後總行數
+  3678→3688）
+- **涉及檔案**：[src/signals/ma200_filter.py](../src/signals/ma200_filter.py)、[src/config.py](../src/config.py)、
+  [src/database/helpers.py](../src/database/helpers.py)、[src/tasks.py](../src/tasks.py)、
+  [src/api/routes.py](../src/api/routes.py)、[.env.example](../.env.example)、
+  [docs/trading-system-impl.md](../trading-system-impl.md)、[docs/harness/IMPL-MAP.md](harness/IMPL-MAP.md)
+
+**回測對照數據**（0050、2015-01-01~2024-12-31、S3 策略，六組同資料同條件公平對照，用於選參數，
+非新的績效背書——樣本僅 5~10 筆交易，橫向比較有效但絕對數字有雜訊）：
+
+| 出場緩衝 | 進場緩衝 | 年化 | 總報酬 | MDD | Sharpe | 交易數 | 勝率 | 翻轉次數 |
+|---|---|---|---|---|---|---|---|---|
+| 0%（基準） | 0% | +4.43% | +41.2% | -10.71% | 0.766 | 10 | 40% | 44 |
+| **2%** | **2%**（採用）| **+4.54%** | **+42.4%** | -10.71% | **0.769** | 5 | 60% | **12** |
+
+翻轉次數 44→12（-73%）、交易數砍半、勝率提升，MDD 六組全部相同（12% 硬停損仍在後面兜底，緩衝帶
+不影響崩盤保護），故採用 2%/2%。
+
+**下一步（第二批剩餘，尚未核准）**：
+1. `PositionSizer`（`src/risk/position_sizer.py`）lot_size 邏輯在資金不足一張時仍會強制買滿 1 張（超買）
+2. `DailyCircuitBreaker`（`src/risk/exposure.py`）熔斷狀態存在記憶體，worker 重啟即歸零，要不要落地到 Redis？
+3. Harness 制度建設遺留：deploy.yml 測試閘門 patch、API 認證 X-API-Key、`.env.tmp` 檔案本體待老闆手動確認刪除
+
+**User 已核准 vs 尚未核准**：
+- 已核准並已執行：每日+2%/2%緩衝帶實作、規格書更新、`check_monthly_trend` 移除
+- 尚未核准：上面「下一步」1–3 項
+
+**驗證**：`python -m py_compile`（8 個改動檔案全過）、`python -m pytest tests/unit -x -q` → 47 passed；
+`git status --short` 見下方 commit 前狀態
+
 ### 2026-07-05 — 建立「交接檔案」SOP（觸發詞制度化）
 
 **任務目標**：老闆希望以後只要說「準備交接檔案」或「開始新對話」，模型就自動完成交接流程，

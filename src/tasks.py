@@ -1,7 +1,6 @@
 import ssl
 import logging
 from datetime import datetime, date
-import calendar
 
 from celery import Celery
 from celery.schedules import crontab
@@ -92,11 +91,6 @@ celery_app.conf.beat_schedule = {
         "task": "src.tasks.run_stock_selection",
         "schedule": crontab(hour=20, minute=0, day_of_week=0),
     },
-    # 22:00 月底 200MA 趨勢檢查
-    "monthly-trend-check": {
-        "task": "src.tasks.check_monthly_trend",
-        "schedule": crontab(hour=22, minute=0),
-    },
     # 23:00 每日資料備份
     "daily-backup": {
         "task": "src.tasks.daily_backup",
@@ -134,7 +128,7 @@ def generate_signal():
     from .data.fetcher import USMarketFetcher, TWMarketFetcher
     from .data.normalizer import DataNormalizer
     from .signals.time_diff import TimeDiffSignalGenerator
-    from .signals.ma200_filter import MA200Filter
+    from .signals.ma200_filter import MA200Filter, TrendState
     from .signals.aggregator import SignalAggregator
     from .risk.position_sizer import PositionSizer
     from .database import sync_run
@@ -143,6 +137,7 @@ def generate_signal():
         save_trend_signal,
         get_open_positions,
         get_cash_balance,
+        get_latest_trend_state,
         open_position,
         close_position,
     )
@@ -164,11 +159,17 @@ def generate_signal():
         )
         time_diff = gen.generate(nasdaq_chg, sp500_chg, sox_chg)
 
-        # S1
+        # S1（每日判斷 + 緩衝帶，防止價格貼線時天天翻多翻空）
         qqq_raw = fetcher.get_historical("qqq", period="2y")
         qqq_df  = norm.normalize_ohlcv(qqq_raw)
-        ma_filter = MA200Filter(period=settings.ma_period)
-        trend = ma_filter.calculate(qqq_df, "QQQ")
+        ma_filter = MA200Filter(
+            period=settings.ma_period,
+            exit_buffer_pct=settings.ma200_exit_buffer_pct,
+            enter_buffer_pct=settings.ma200_enter_buffer_pct,
+        )
+        prev_state_str = sync_run(get_latest_trend_state("QQQ"))
+        prev_state = TrendState(prev_state_str) if prev_state_str else None
+        trend = ma_filter.calculate(qqq_df, "QQQ", prev_state=prev_state)
 
         # S3
         agg = SignalAggregator(
@@ -644,48 +645,6 @@ def run_weekly_review():
             sync_run(get_alerter().system_error("run_weekly_review", str(e)))
         except Exception:
             pass
-        return {"status": "error", "reason": str(e)}
-
-
-# ── 任務：月底 MA200 趨勢檢查 ─────────────────────────────────────────
-
-@celery_app.task(name="src.tasks.check_monthly_trend")
-def check_monthly_trend():
-    """22:00 月底 200MA 趨勢檢查。"""
-    today = date.today()
-    last_day = calendar.monthrange(today.year, today.month)[1]
-    if today.day != last_day:
-        return {"status": "skipped", "reason": "非月底"}
-
-    from .data.fetcher import USMarketFetcher
-    from .data.normalizer import DataNormalizer
-    from .signals.ma200_filter import MA200Filter
-    from .database import sync_run
-    from .database.helpers import save_trend_signal
-
-    try:
-        fetcher = USMarketFetcher()
-        norm = DataNormalizer()
-        qqq_raw = fetcher.get_historical("qqq", period="2y")
-        qqq_df = norm.normalize_ohlcv(qqq_raw)
-        ma_filter = MA200Filter(period=settings.ma_period)
-        signal = ma_filter.calculate(qqq_df, "QQQ")
-
-        sync_run(save_trend_signal(
-            symbol="QQQ",
-            state=signal.state.value,
-            current_price=float(signal.current_price),
-            ma200=float(signal.ma200),
-            distance_pct=float(signal.distance_pct),
-            signal_date=datetime.utcnow(),
-            is_newly_crossed=signal.is_newly_crossed,
-        ))
-
-        logger.info(f"Monthly MA200: QQQ → {signal.state.value}")
-        return {"state": signal.state.value, "distance_pct": signal.distance_pct}
-
-    except Exception as e:
-        logger.error(f"check_monthly_trend failed: {e}")
         return {"status": "error", "reason": str(e)}
 
 
