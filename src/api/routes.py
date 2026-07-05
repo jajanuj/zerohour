@@ -14,6 +14,7 @@ from .schemas import (
     ReviewReportSchema,
     MarketContextSchema,
     BlackSwanSchema,
+    GeminiUsageResponse,
     WatchlistItemSchema,
     BacktestRequest,
     BacktestResponse,
@@ -327,6 +328,32 @@ async def get_black_swan_status():
     except Exception as e:
         logger.error(f"get_black_swan_status error: {e}")
         return None
+
+
+@router.get("/agents/gemini-usage", response_model=GeminiUsageResponse)
+async def get_gemini_usage(days: int = 7):
+    """Gemini API 呼叫記錄與當日用量（免費方案 RPD 上限 20）。"""
+    from datetime import datetime as _dt, timedelta as _td
+    from ..database.helpers import get_agent_runs
+    try:
+        runs = await get_agent_runs(days)
+        tw_today = (_dt.utcnow() + _td(hours=8)).date()
+
+        def _is_tw_today(iso: str) -> bool:
+            try:
+                return (_dt.fromisoformat(iso) + _td(hours=8)).date() == tw_today
+            except ValueError:
+                return False
+
+        today = [r for r in runs if _is_tw_today(r["run_at"])]
+        return GeminiUsageResponse(
+            today_calls=len(today),
+            today_tokens=sum(r["tokens_used"] for r in today),
+            runs=runs,
+        )
+    except Exception as e:
+        logger.error(f"get_gemini_usage error: {e}")
+        return GeminiUsageResponse()
 
 
 def _price_cache():

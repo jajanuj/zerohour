@@ -124,6 +124,23 @@ class WatchlistItemSchema(BaseModel):
     expires_at: str = ""
 
 
+class GeminiRunItem(BaseModel):
+    run_at: str
+    run_type: str
+    symbol: str = ""
+    tokens_used: int = 0
+    duration_ms: int = 0
+    success: bool = True
+    error_message: str = ""
+
+
+class GeminiUsageResponse(BaseModel):
+    today_calls: int = 0
+    rpd_limit: int = 20  # gemini-2.5-flash 免費方案每日呼叫上限
+    today_tokens: int = 0
+    runs: list[GeminiRunItem] = []
+
+
 class BacktestRequest(BaseModel):
     strategy: str = Field(default="S3")
     symbol: str = Field(default="QQQ")

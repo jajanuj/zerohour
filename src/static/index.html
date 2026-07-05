@@ -372,6 +372,18 @@
     </div>
   </div>
 
+  <!-- Gemini 用量（agent_run_logs） -->
+  <div class="card" style="margin-bottom:20px">
+    <div class="card-header">
+      <span class="card-title"><i class="ti ti-cpu" aria-hidden="true"></i>Gemini 用量</span>
+      <span id="gemini-badge" class="badge badge-gray">載入中</span>
+    </div>
+    <div class="card-body">
+      <div id="gemini-summary" style="font-size:12px;color:var(--text-muted);margin-bottom:8px">—</div>
+      <div id="gemini-runs" style="font-size:11px;color:var(--text-muted);line-height:1.8"></div>
+    </div>
+  </div>
+
   <!-- Watchlist -->
   <div class="section-title">選股觀察名單</div>
   <div class="card" style="margin-bottom:20px">
@@ -1640,6 +1652,34 @@ async function triggerTask(taskName) {
   }
 }
 
+// ─── Gemini 用量 ──────────────────────────────────────────────────
+async function loadGeminiUsage() {
+  const badge = document.getElementById('gemini-badge');
+  const summary = document.getElementById('gemini-summary');
+  const area = document.getElementById('gemini-runs');
+  if (!badge) return;
+  try {
+    const r = await fetch(API + '/api/v1/agents/gemini-usage?days=7');
+    if (!r.ok) throw new Error(`HTTP ${r.status}`);
+    const d = await r.json();
+    const limit = d.rpd_limit || 20;
+    const pct = d.today_calls / limit;
+    badge.textContent = `今日 ${d.today_calls}/${limit}`;
+    badge.className = 'badge ' + (pct >= 0.8 ? 'badge-sell' : pct >= 0.5 ? 'badge-hold' : 'badge-ok');
+    summary.textContent = `今日呼叫 ${d.today_calls} 次（免費額度 ${limit}/日）、${(d.today_tokens || 0).toLocaleString()} tokens；近 7 天共 ${(d.runs || []).length} 筆記錄`;
+    area.innerHTML = (d.runs || []).slice(0, 8).map(x => {
+      const t = x.run_at ? new Date(x.run_at + 'Z').toLocaleString('zh-TW', { month: '2-digit', day: '2-digit', hour: '2-digit', minute: '2-digit' }) : '—';
+      const ok = x.success ? '<span style="color:var(--green)">✓</span>' : '<span style="color:var(--red)">✗</span>';
+      const err = x.success ? '' : ' · ' + (x.error_message || '').slice(0, 60);
+      return `<div>${ok} ${t}　${x.run_type}${x.symbol ? ' · ' + x.symbol : ''} — ${(x.tokens_used || 0).toLocaleString()} tokens · ${x.duration_ms}ms${err}</div>`;
+    }).join('') || '<div>尚無記錄（下次排程任務呼叫 Gemini 時開始記錄）</div>';
+  } catch (e) {
+    badge.textContent = '錯誤'; badge.className = 'badge badge-sell';
+    if (summary) summary.textContent = '載入失敗：' + (e.message || 'HTTP 錯誤');
+    if (area) area.innerHTML = '';
+  }
+}
+
 // ─── Refresh All ──────────────────────────────────────────────────
 async function refreshAll() {
   const btn = document.getElementById('refresh-btn');
@@ -1649,7 +1689,7 @@ async function refreshAll() {
   await Promise.all([
     loadSignals(), loadPerformance(), loadPositions(),
     loadWeeklyReview(), loadMarketContext(), loadBlackSwan(), loadWatchlist(),
-    loadEquityCurve(), loadSignalHistory(), loadPortfolio(),
+    loadEquityCurve(), loadSignalHistory(), loadPortfolio(), loadGeminiUsage(),
   ]);
   const now = new Date();
   document.getElementById('last-update-time').textContent = now.toLocaleTimeString('zh-TW');

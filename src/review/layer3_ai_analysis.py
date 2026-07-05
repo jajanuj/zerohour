@@ -1,9 +1,11 @@
 import httpx
 import json
 import logging
+import time
 from datetime import date
 from typing import Optional
 
+from ..agents.gemini_usage import record_gemini_call
 from ..config import get_settings
 
 logger = logging.getLogger(__name__)
@@ -67,6 +69,8 @@ vs 基準（0050 買入持有）：{rolling_stats.get('vs_benchmark_pct', 0):+.2
 格式：使用 Markdown，每個區塊清楚標示。
 """
 
+    _t0 = time.monotonic()
+    _logged = False
     try:
         async with httpx.AsyncClient(timeout=30.0) as client:
             resp = await client.post(
@@ -79,8 +83,12 @@ vs 基準（0050 買入持有）：{rolling_stats.get('vs_benchmark_pct', 0):+.2
             )
             resp.raise_for_status()
             data = resp.json()
+            await record_gemini_call("daily_review_ai", None, _t0, data=data)
+            _logged = True
             return data["candidates"][0]["content"]["parts"][0]["text"]
     except Exception as e:
+        if not _logged:
+            await record_gemini_call("daily_review_ai", None, _t0, error=e)
         logger.error(f"AI 覆盤呼叫失敗: {e}")
         return f"AI 覆盤執行失敗：{e}"
 
@@ -133,6 +141,8 @@ async def run_weekly_ai_review(
 格式：使用 Markdown，每個區塊清楚標示。字數控制在 600 字以內。
 """
 
+    _t0 = time.monotonic()
+    _logged = False
     try:
         async with httpx.AsyncClient(timeout=30.0) as client:
             resp = await client.post(
@@ -145,7 +155,11 @@ async def run_weekly_ai_review(
             )
             resp.raise_for_status()
             data = resp.json()
+            await record_gemini_call("weekly_review_ai", None, _t0, data=data)
+            _logged = True
             return data["candidates"][0]["content"]["parts"][0]["text"]
     except Exception as e:
+        if not _logged:
+            await record_gemini_call("weekly_review_ai", None, _t0, error=e)
         logger.error(f"週 AI 覆盤呼叫失敗: {e}")
         return f"週 AI 覆盤執行失敗：{e}"

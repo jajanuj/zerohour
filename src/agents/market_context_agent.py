@@ -2,7 +2,10 @@
 import httpx
 import json
 import logging
+import time
 from datetime import datetime
+
+from .gemini_usage import record_gemini_call
 
 logger = logging.getLogger(__name__)
 
@@ -87,6 +90,8 @@ confidence_modifier 說明：
 - 0.0：中性，無特別影響
 """
 
+    _t0 = time.monotonic()
+    _logged = False
     try:
         async with httpx.AsyncClient(timeout=30.0) as client:
             resp = await client.post(
@@ -99,6 +104,8 @@ confidence_modifier 說明：
             )
             resp.raise_for_status()
             data = resp.json()
+            await record_gemini_call("market_context", None, _t0, data=data)
+            _logged = True
             raw = data["candidates"][0]["content"]["parts"][0]["text"].strip()
             raw = raw.replace("```json", "").replace("```", "").strip()
             result = json.loads(raw)
@@ -108,5 +115,7 @@ confidence_modifier 說明：
         logger.error(f"Market Context Agent JSON parse error: {e}, raw={raw[:200]}")
         return _DEFAULT
     except Exception as e:
+        if not _logged:
+            await record_gemini_call("market_context", None, _t0, error=e)
         logger.error(f"Market Context Agent error: {e}")
         return _DEFAULT

@@ -2,8 +2,11 @@
 import httpx
 import json
 import logging
+import time
 from dataclasses import dataclass
 from datetime import datetime, timedelta
+
+from ..gemini_usage import record_gemini_call
 
 logger = logging.getLogger(__name__)
 
@@ -142,6 +145,8 @@ JSON 格式回覆：
 - 40以下：逆風（負面消息或財報下修風險）
 """
 
+    _t0 = time.monotonic()
+    _logged = False
     try:
         async with httpx.AsyncClient(timeout=25.0) as client:
             resp = await client.post(
@@ -154,6 +159,8 @@ JSON 格式回覆：
             )
             resp.raise_for_status()
             data = resp.json()
+            await record_gemini_call("catalyst_agent", symbol, _t0, data=data)
+            _logged = True
             raw = data["candidates"][0]["content"]["parts"][0]["text"].strip()
             raw = raw.replace("```json", "").replace("```", "").strip()
             r = json.loads(raw)
@@ -168,5 +175,7 @@ JSON 格式回覆：
                 summary=r.get("summary", ""),
             )
     except Exception as e:
+        if not _logged:
+            await record_gemini_call("catalyst_agent", symbol, _t0, error=e)
         logger.error(f"catalyst_agent {symbol} error: {e}")
         return _default

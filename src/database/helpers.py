@@ -811,6 +811,31 @@ async def log_agent_run(
         ))
 
 
+async def get_agent_runs(days: int = 7, limit: int = 100) -> list[dict]:
+    """Return recent agent runs（Gemini 呼叫記錄），最新在前。"""
+    cutoff = datetime.utcnow() - timedelta(days=days)
+    async with get_session() as session:
+        result = await session.execute(
+            select(AgentRunLog)
+            .where(AgentRunLog.run_at >= cutoff)
+            .order_by(desc(AgentRunLog.run_at))
+            .limit(limit)
+        )
+        rows = result.scalars().all()
+        return [
+            {
+                "run_at": r.run_at.isoformat() if r.run_at else "",
+                "run_type": r.run_type,
+                "symbol": r.symbol or "",
+                "tokens_used": int(r.tokens_used or 0),
+                "duration_ms": int(r.duration_ms or 0),
+                "success": bool(r.success),
+                "error_message": r.error_message or "",
+            }
+            for r in rows
+        ]
+
+
 async def get_latest_performance() -> dict | None:
     """Return the most recent performance snapshot."""
     async with get_session() as session:
