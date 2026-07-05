@@ -1039,7 +1039,7 @@ async function loadWatchlist() {
             const k = w.symbol.replace('.','_');
             return `<tr data-symbol="${w.symbol}">
               <td>
-                <strong>${w.symbol}</strong>
+                <strong>${w.symbol}</strong>${w.is_new ? ' <span class="badge badge-hold" style="font-size:9px;padding:1px 5px" title="相對前一期為新進榜">NEW</span>' : ''}
                 <div style="font-size:11px;color:var(--text-muted)">${name}</div>
                 <div style="font-size:10px;color:var(--text-light)">技術${techScore} / 基本面${fundScore}</div>
               </td>

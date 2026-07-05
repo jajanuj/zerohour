@@ -654,20 +654,35 @@ async def get_latest_black_swan() -> dict | None:
         }
 
 
-async def save_watchlist(items: list[dict]) -> None:
+def compute_new_faces(new_symbols: list[str], prev_symbols: set[str]) -> dict[str, bool]:
+    """新面孔判定（report-optimization-plan Phase E）。
+
+    相對前一期 active 清單，新進榜的 symbol 為 True。
+    首期（prev_symbols 為空，無前期可比）全部 False，避免全場標 NEW 的噪音。
+    """
+    if not prev_symbols:
+        return {s: False for s in new_symbols}
+    return {s: s not in prev_symbols for s in new_symbols}
+
+
+async def save_watchlist(items: list[dict]) -> list[str]:
     """
     Replace active watchlist with new items.
     Deactivate old items, insert new ones.
+    Returns list of new-face symbols（相對前一期的新面孔）。
     """
     now = datetime.utcnow()
     expires = now + timedelta(days=8)  # 下次掃描前有效（7天+緩衝）
     async with get_session() as session:
-        # Mark all existing active items as expired
+        # Mark all existing active items as expired（順便收集前期 symbols 供新面孔判定）
         result = await session.execute(
             select(WatchlistItem).where(WatchlistItem.status == "active")
         )
+        prev_symbols: set[str] = set()
         for old in result.scalars().all():
+            prev_symbols.add(old.symbol)
             old.status = "expired"
+        new_face_map = compute_new_faces([i["symbol"] for i in items], prev_symbols)
         # Insert new items
         for item in items:
             session.add(WatchlistItem(
@@ -679,9 +694,11 @@ async def save_watchlist(items: list[dict]) -> None:
                 entry_condition=item.get("entry_condition", ""),
                 agent_results=item.get("agent_results", {}),
                 status="active",
+                is_new=new_face_map.get(item["symbol"], False),
                 generated_at=now,
                 expires_at=expires,
             ))
+    return [s for s, v in new_face_map.items() if v]
 
 
 async def get_watchlist() -> list[dict]:
@@ -702,6 +719,7 @@ async def get_watchlist() -> list[dict]:
                 "risks": r.risks or [],
                 "entry_condition": r.entry_condition or "",
                 "agent_results": r.agent_results or {},
+                "is_new": bool(r.is_new),
                 "generated_at": r.generated_at.isoformat() if r.generated_at else "",
                 "expires_at": r.expires_at.isoformat() if r.expires_at else "",
             }

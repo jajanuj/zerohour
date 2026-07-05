@@ -118,6 +118,7 @@ class WatchlistItemSchema(BaseModel):
     risks: list[str] = []
     entry_condition: str = ""
     agent_results: dict = {}
+    is_new: bool = False  # 相對前一期為新面孔（報表優化 Phase E）
     generated_at: str = ""
     expires_at: str = ""
 

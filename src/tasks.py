@@ -785,12 +785,15 @@ def run_stock_selection():
             }
             for e in entries
         ]
-        sync_run(save_watchlist(items))
+        new_faces = sync_run(save_watchlist(items)) or []
 
-        # Discord 通知
+        # Discord 通知（新面孔加 ★ 前綴）
         try:
             from .alerts.discord import get_alerter
-            top_symbols = ", ".join(e.symbol for e in entries[:5])
+            top_symbols = ", ".join(
+                ("★" + e.symbol) if e.symbol in new_faces else e.symbol
+                for e in entries[:5]
+            )
             sync_run(get_alerter().watchlist_update(
                 count=len(entries),
                 top_symbols=top_symbols,
