@@ -40,6 +40,7 @@ class TrendSignal(Base):
     ma200 = Column(Numeric(12, 4))
     distance_pct = Column(Numeric(8, 4))
     is_newly_crossed = Column(Boolean, default=False)
+    conditions = Column(JSON)  # S1 逐條件明細（report-optimization-plan §1.1）
     created_at = Column(DateTime, default=datetime.utcnow)
 
 
@@ -56,6 +57,8 @@ class TimeDiffSignalRecord(Base):
     trigger_reason = Column(String(500))
     suggested_symbol = Column(String(20))
     suggested_action = Column(String(10))
+    conditions = Column(JSON)  # S2+S3 逐條件明細合併（report-optimization-plan §1.1）
+    next_step = Column(String(300))
     created_at = Column(DateTime, default=datetime.utcnow)
 
 
@@ -228,6 +231,7 @@ class WatchlistItem(Base):
     entry_condition = Column(Text)
     agent_results = Column(JSON)
     status = Column(String(20), default="active")
+    is_new = Column(Boolean, default=False)  # 相對前一期為新面孔（首期全 False）
     generated_at = Column(DateTime, nullable=False)
     expires_at = Column(DateTime, nullable=False)
     created_at = Column(DateTime, default=datetime.utcnow)

@@ -45,6 +45,11 @@ async def init_db() -> None:
             "ALTER TABLE portfolio_positions ALTER COLUMN avg_cost TYPE NUMERIC(12,4) USING avg_cost::numeric",
             "ALTER TABLE portfolio_positions ADD COLUMN IF NOT EXISTS currency VARCHAR(3) DEFAULT 'TWD'",
             "ALTER TABLE portfolio_positions ADD COLUMN IF NOT EXISTS market VARCHAR(5) DEFAULT 'TW'",
+            # 報表可觀測性優化（docs/report-optimization-plan.md Phase A）
+            "ALTER TABLE trend_signals ADD COLUMN IF NOT EXISTS conditions JSON",
+            "ALTER TABLE time_diff_signals ADD COLUMN IF NOT EXISTS conditions JSON",
+            "ALTER TABLE time_diff_signals ADD COLUMN IF NOT EXISTS next_step VARCHAR(300)",
+            "ALTER TABLE watchlist ADD COLUMN IF NOT EXISTS is_new BOOLEAN DEFAULT FALSE",
         ]:
             try:
                 await conn.execute(text(stmt))
