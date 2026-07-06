@@ -32,8 +32,12 @@
   `api_key` 為空 = 停用；前端 fetch wrapper 自動帶 key、401 prompt 一次
 - ✅ 測試 171 → 189（新增 18 個：日曆 7 + 倉位 4 + 認證 7），既有測試零改動
 
-**遇到的問題**：本地 venv 缺 `python-multipart`（pyproject 第 25 行既有宣告依賴，
-非新增），補裝後測試全過
+**遇到的問題**：
+1. 本地 venv 缺 `python-multipart`（pyproject 既有宣告依賴，非新增），補裝後測試全過
+2. **閘門首航就擋下隱形 CI 失敗**：`aiosqlite` 從未宣告在依賴（config.py 預設
+   sqlite+aiosqlite，本地能跑是手動裝過），Phase E 起 Test & Lint 連紅 4 次被
+   無閘門部署掩蓋。老闆核准後補進 dev extras（`c4b8660`），兩個 workflow 轉綠、
+   部署成功；教訓已入 LESSONS（push 後必查 `gh run list`，煙霧 200 ≠ CI 綠）
 
 **⚠️ 待老闆一件事**：API 認證代碼已部署但**金鑰未設定前驗證是停用的**（fail-open）。
 請執行 `fly secrets set API_KEY=<自訂長隨機字串>` 啟用；設定後開 dashboard 會跳出
