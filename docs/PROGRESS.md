@@ -8,6 +8,41 @@
 
 ## 📍 最新狀態（新的寫最上面）
 
+### 2026-07-06 — 安全與維運補強五連發（老闆逐項核准）
+
+**任務目標**：老闆核准五項：API 認證 + Gemini 呼叫記錄與查看、deploy.yml 測試閘門、
+每日任務非交易日過濾、PositionSizer 超買修復、PROGRESS 精簡。
+
+**已完成**（commit 順序 `b94bf53`→`42910bb`→`9c103fe`→`67b49ed`→`6113c77`→`84086a0`）：
+- ✅ **PROGRESS 精簡**：依 F 協議 §4，最新狀態留 5 個 session，其餘壓為單行摘要移歷史區
+  （440→380 行；備份於本機 scratchpad，完整版在 git 歷史）
+- ✅ **deploy.yml 測試閘門**：test job + `needs:[test]`（A 診斷書痛點三 patch），
+  單元測試不過不部署——生產直通車正式關閉
+- ✅ **非交易日過濾**：新增 `src/data/market_calendar.py`（UTC+8 週末 +
+  `TW_MARKET_HOLIDAYS` 假日清單），guard 掛在 generate_signal / update_positions /
+  run_daily_review / run_market_context；週報（五）/選股（日）/黑天鵝（安全監控）不過濾
+- ✅ **PositionSizer 超買修復**（老闆核准動 src/risk/）：lot_size>1 資金不足一張 →
+  blocked（原 `max(1,...)` 會強制買滿）；足夠時無條件捨去到整張並對齊金額；
+  lot_size=1 零股路徑行為不變
+- ✅ **Gemini 呼叫記錄**：`agent_run_logs` 表/`log_agent_run()` 一直存在但**從未接線**——
+  新增 `src/agents/gemini_usage.py`，接上全部 5 個呼叫點（market_context、daily/weekly
+  review、catalyst、fundamental）；新端點 `GET /api/v1/agents/gemini-usage`；
+  dashboard 新增「Gemini 用量」卡（今日次數 vs RPD 20、tokens、近 8 筆）
+- ✅ **API 認證**：X-API-Key middleware 保護全部 /api/v1/*（豁免 health/OPTIONS/首頁）；
+  `api_key` 為空 = 停用；前端 fetch wrapper 自動帶 key、401 prompt 一次
+- ✅ 測試 171 → 189（新增 18 個：日曆 7 + 倉位 4 + 認證 7），既有測試零改動
+
+**遇到的問題**：本地 venv 缺 `python-multipart`（pyproject 第 25 行既有宣告依賴，
+非新增），補裝後測試全過
+
+**⚠️ 待老闆一件事**：API 認證代碼已部署但**金鑰未設定前驗證是停用的**（fail-open）。
+請執行 `fly secrets set API_KEY=<自訂長隨機字串>` 啟用；設定後開 dashboard 會跳出
+輸入框，貼同一組 key 即可。另 `TW_MARKET_HOLIDAYS` 假日清單可視需要用
+`fly secrets set` 補（格式 `2026-10-09,2026-10-10`，未填只過濾週末）。
+
+**下一步**：S4 觀察期進行中（3 個交易日）；剩餘未完成項見歷史區
+「計劃中但未實作」（月度覆盤、熔斷落地 Redis、ShadowTestResult 等）。
+
 ### 2026-07-06 — S4 台股趨勢確認因子實作上線（規格：docs/strategy-s4-spec.md）
 
 **任務目標**：S4 = S3 的 BUY 倉位調整係數（方案 A）。台股自身趨勢不健康時買一樣的訊號、
@@ -328,8 +363,8 @@ Phase 1 錄製器 + Phase 2 悲觀回測引擎），S4（策略一）尚未動�
 
 ### 高優先：安全性
 
-**1. API 缺乏認證** — 所有端點目前無驗證，包括 `POST /api/v1/tasks/{task_name}`（可觸發 Gemini API 呼叫導致額外費用）。計劃 §6.1 原有 Bearer Token 但從未實作。
-- **建議做法**：加入簡單 `X-API-Key` header 驗證（Fly.io secret 管理）
+**1. ✅ API 認證（已實作 2026-07-06）** — X-API-Key middleware 保護全部 /api/v1/*，
+金鑰待老闆 `fly secrets set API_KEY=...` 啟用。
 
 ### 高優先：效能
 
@@ -339,11 +374,10 @@ Phase 1 錄製器 + Phase 2 悲觀回測引擎），S4（策略一）尚未動�
 
 ### 中優先：功能完整性
 
-**3. 每日任務未排除非交易日** — `generate_signal`、`run_daily_review`、`update_positions` 每天都跑，包含週六、週日、台灣市場休假日。非交易日執行不會產生錯誤（因為 yfinance 不回傳新資料），但多餘的 Gemini API 呼叫會浪費配額。
-- **建議做法**：任務開頭加台灣市場是否開市檢查
+**3. ✅ 非交易日過濾（已實作 2026-07-06）** — `src/data/market_calendar.py`，
+四個每日任務週末/假日跳過。
 
-**4. GitHub CI 沒有阻擋部署** — `deploy.yml` 沒有 `needs: [test]`，所以測試失敗時仍會部署。這是 CI/CD 的品質漏洞。
-- **建議做法**：在 deploy.yml 加 `needs: [test]`（需要先確認 test.yml 全通過）
+**4. ✅ deploy.yml 測試閘門（已實作 2026-07-06）** — test job + `needs: [test]`。
 
 ### 低優先：計劃完整性
 
