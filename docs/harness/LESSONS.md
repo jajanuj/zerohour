@@ -22,3 +22,4 @@
 | 2026-07 | 債券 ETF 股價顯示 N/A | 00679B 等低流動性 ETF 好幾天沒成交，`history("3d")` 抓不到資料 | 抓價 fallback 要逐步放寬回看期 5d→1mo→3mo | e0fa40e |
 | 2026-07 | scalper 回測測試失敗（少了預期的成交記錄） | 合成測試事件的時間戳用各自獨立的 `base + timedelta(...)` 拼湊，其中一筆算出來反而早於前一筆，事件順序顛倒 | 建構 replay/backtest 用的合成事件序列，一律用單一遞增游標變數疊加 timedelta，禁止從同一個 base 各自獨立算相對偏移 | 59786a8 |
 | 2026-07 | `or 0.0` 擋不住 NaN 的坑 2026-06 已修過，但只修了 routes.py；tasks.py 三個任務（含黑天鵝偵測）同模式殘留一個月 | 修坑時只改了報錯的那一處，沒有全域搜同一寫法 | 修任何 bug 時先 `grep` 全 codebase 找同一模式（本例 `or 0.0`），一次修完所有出現點，並在 LESSONS 註明搜過 | b7e3d6a |
+| 2026-07 | Test & Lint 連紅 4 次無人發現（aiosqlite 未宣告在依賴，CI 裝不到），煙霧測試卻照樣 200 | deploy 無測試閘門時壞測試照樣部署；驗收習慣只看煙霧測試不看 CI 結論 | push 後驗收必跑 `gh run list` 確認兩個 workflow conclusion 皆 success，煙霧測試 200 不能代替 CI 綠燈 | 42910bb |

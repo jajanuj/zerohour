@@ -33,6 +33,9 @@ dev = [
     "ruff>=0.4.0",
     "mypy>=1.10.0",
     "httpx>=0.27.0",
+    # config.py 預設 DB 為 sqlite+aiosqlite，本地開發與 CI 測試必需；
+    # 生產走 Supabase asyncpg 不需要。PyPI 驗證 2026-07-06（最新 0.22.1），老闆核准。
+    "aiosqlite>=0.19.0",
 ]
 backtest = [
     "vectorbt>=0.26.0",
