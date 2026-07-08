@@ -63,14 +63,26 @@ async def drop_db() -> None:
         await conn.run_sync(Base.metadata.drop_all)
 
 
-def sync_run(coro):
-    """Run an async coroutine from sync code (e.g., Celery tasks).
+_worker_loop: asyncio.AbstractEventLoop | None = None
 
-    每次呼叫先 dispose engine pool，避免 asyncio.run() 建新 event loop 後
-    舊 pool 連線仍綁在前一個 loop 導致 'Future attached to a different loop'。
+
+def sync_run(coro):
+    """Run an async coroutine from sync code (Celery worker, --pool=solo)。
+
+    復用單一常駐 event loop，而非每次呼叫都用 asyncio.run() 建新 loop。
+
+    **2026-07-07 生產事故修復**：舊版每次呼叫都 `asyncio.run()`（建新 loop→跑
+    →關 loop），並在跑之前 `dispose(close=False)` 清空連線池——`close=False` 是
+    因為舊 loop 的連線關不得（會拋 'Future attached to a different loop'），所以
+    選擇不關、直接棄置。結果是每次呼叫都可能留下沒真正關閉的 asyncpg 連線，
+    在 Celery worker 長駐生命週期內逐日堆積，最終打穿 Supabase session pooler
+    的 pool_size 上限（`EMAXCONNSESSION`，觸發於 `run_daily_review`）。
+
+    根本修法：worker process 用 `--pool=solo` 單行程單執行緒序列跑任務（見
+    fly.toml），同一顆 loop 全程可安全復用，不需要每次重建。連線池交回
+    SQLAlchemy 正常管理（用完歸還池內重用），不再需要 dispose 這道手續。
     """
-    async def _run():
-        # close=False：只清空 pool，不主動關舊連線（舊連線綁舊 loop，關閉會報錯）
-        await async_engine.dispose(close=False)
-        return await coro
-    return asyncio.run(_run())
+    global _worker_loop
+    if _worker_loop is None or _worker_loop.is_closed():
+        _worker_loop = asyncio.new_event_loop()
+    return _worker_loop.run_until_complete(coro)
