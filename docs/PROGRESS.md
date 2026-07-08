@@ -8,6 +8,42 @@
 
 ## 📍 最新狀態（新的寫最上面）
 
+### 2026-07-07 — 生產事故：Supabase 連線池耗盡修復（EMAXCONNSESSION）
+
+**觸發**：老闆轉來 Discord 系統錯誤截圖——`run_daily_review` 於 2026-07-06 下午
+13:40 報錯 `(EMAXCONNSESSION) max clients reached in session mode - max clients
+are limited to pool_size: 15`。
+
+**根因**：`src/database/__init__.py` 的 `sync_run()`（Celery 任務橋接 sync→async
+的唯一入口，`tasks.py` 內 41 處呼叫點）每次呼叫都用 `asyncio.run()` 建一顆新
+event loop、跑完就關閉；且跑之前 `dispose(close=False)`——這個 `close=False`
+是 6/28 兩次 commit（`758d301`、`9329a1d`）為了修「Future attached to a
+different loop」錯誤而選擇的做法：不真的關閉舊 loop 綁定的底層連線（關閉會拋
+錯），而是直接棄置。Celery worker 用 `--pool=solo`（fly.toml，單行程單執行緒
+長駐），這些沒真正關閉的 asyncpg 連線在 worker 生命週期內逐日堆積、從未釋放，
+9 天後打穿 Supabase session pooler 的 `pool_size=15` 上限。
+
+**診斷過程中的意外驗證**：本機跑診斷測試時，其中一版測試意外連上生產 Supabase
+（本機 `.env` 設定的是生產 DATABASE_URL）並**當場重現同一個 EMAXCONNSESSION
+錯誤**——證實事故是持續性的（連線持續處於耗盡邊緣），不是單次事件。已改寫測試
+改用獨立記憶體 SQLite engine，避免測試碰觸本機環境變數指向的生產資料庫。
+
+**修復**（commit `66e3e02`）：`sync_run()` 改為復用單一常駐 event loop（模組級
+全域變數，`--pool=solo` 單執行緒序列跑任務、天生安全），移除 `dispose` 呼叫，
+連線池交回 SQLAlchemy 正常管理與回收，不再逐次建了又棄。新增 4 個回歸測試
+（含模擬多任務週期的 DB session 往返），全套 193 passed（189→193）。
+
+**與過去修復的關係**：`758d301`／`9329a1d` 的原始問題（different loop 錯誤）
+本次修復依然解決——因為現在全程只有一顆 loop，跟本不會有「連線綁在別的 loop」
+的情況；等於是把當初的繞道 workaround 換成真正的根治。
+
+**下一步**：push 後除了 CI 綠燈 + 煙霧測試，**還需額外確認部署後的
+worker 有正常重啟**（deploy.yml 既有的 scale 0→1 步驟會強制重啟 worker VM，
+副作用是清掉舊 process 遺留的、已卡住的 TCP 連線——這對於解除當下已經耗盡的
+連線額度是必要的，不只是防未來再犯）。建議明天（下一個交易日）觀察
+04:05/13:40 等排程任務是否恢復正常，Discord 若無新的 EMAXCONNSESSION 錯誤即
+代表修復生效。
+
 ### 2026-07-06 — 安全與維運補強五連發（老闆逐項核准）
 
 **任務目標**：老闆核准五項：API 認證 + Gemini 呼叫記錄與查看、deploy.yml 測試閘門、
