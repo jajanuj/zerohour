@@ -5,7 +5,7 @@ import logging
 import time
 from dataclasses import dataclass
 
-from ..gemini_usage import record_gemini_call
+from ..gemini_usage import record_gemini_call, redact_secrets
 
 logger = logging.getLogger(__name__)
 
@@ -131,8 +131,11 @@ JSON 格式回覆：
     try:
         async with httpx.AsyncClient(timeout=30.0) as client:
             resp = await client.post(
-                f"https://generativelanguage.googleapis.com/v1/models/gemini-2.5-flash:generateContent?key={settings.gemini_api_key}",
-                headers={"Content-Type": "application/json"},
+                "https://generativelanguage.googleapis.com/v1/models/gemini-2.5-flash:generateContent",
+                headers={
+                    "Content-Type": "application/json",
+                    "x-goog-api-key": settings.gemini_api_key,
+                },
                 json={
                     "contents": [{"parts": [{"text": prompt}]}],
                     "generationConfig": {"maxOutputTokens": 600},
@@ -159,7 +162,7 @@ JSON 格式回覆：
     except Exception as e:
         if not _logged:
             await record_gemini_call("fundamental_agent", symbol, _t0, error=e)
-        logger.error(f"fundamental_agent {symbol} Gemini error: {e}")
+        logger.error(f"fundamental_agent {symbol} Gemini error: {redact_secrets(str(e))}")
         return _quantitative_fallback(symbol, fin)
 
 

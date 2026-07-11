@@ -5,7 +5,7 @@ import time
 from datetime import date
 from typing import Optional
 
-from ..agents.gemini_usage import record_gemini_call
+from ..agents.gemini_usage import record_gemini_call, redact_secrets
 from ..config import get_settings
 
 logger = logging.getLogger(__name__)
@@ -74,8 +74,11 @@ vs 基準（0050 買入持有）：{rolling_stats.get('vs_benchmark_pct', 0):+.2
     try:
         async with httpx.AsyncClient(timeout=30.0) as client:
             resp = await client.post(
-                f"https://generativelanguage.googleapis.com/v1/models/gemini-2.5-flash:generateContent?key={settings.gemini_api_key}",
-                headers={"Content-Type": "application/json"},
+                "https://generativelanguage.googleapis.com/v1/models/gemini-2.5-flash:generateContent",
+                headers={
+                    "Content-Type": "application/json",
+                    "x-goog-api-key": settings.gemini_api_key,
+                },
                 json={
                     "contents": [{"parts": [{"text": prompt}]}],
                     "generationConfig": {"maxOutputTokens": 1500},
@@ -89,8 +92,9 @@ vs 基準（0050 買入持有）：{rolling_stats.get('vs_benchmark_pct', 0):+.2
     except Exception as e:
         if not _logged:
             await record_gemini_call("daily_review_ai", None, _t0, error=e)
-        logger.error(f"AI 覆盤呼叫失敗: {e}")
-        return f"AI 覆盤執行失敗：{e}"
+        safe_err = redact_secrets(str(e))
+        logger.error(f"AI 覆盤呼叫失敗: {safe_err}")
+        return f"AI 覆盤執行失敗：{safe_err}"
 
 
 async def run_weekly_ai_review(
@@ -146,8 +150,11 @@ async def run_weekly_ai_review(
     try:
         async with httpx.AsyncClient(timeout=30.0) as client:
             resp = await client.post(
-                f"https://generativelanguage.googleapis.com/v1/models/gemini-2.5-flash:generateContent?key={settings.gemini_api_key}",
-                headers={"Content-Type": "application/json"},
+                "https://generativelanguage.googleapis.com/v1/models/gemini-2.5-flash:generateContent",
+                headers={
+                    "Content-Type": "application/json",
+                    "x-goog-api-key": settings.gemini_api_key,
+                },
                 json={
                     "contents": [{"parts": [{"text": prompt}]}],
                     "generationConfig": {"maxOutputTokens": 1200},
@@ -161,5 +168,6 @@ async def run_weekly_ai_review(
     except Exception as e:
         if not _logged:
             await record_gemini_call("weekly_review_ai", None, _t0, error=e)
-        logger.error(f"週 AI 覆盤呼叫失敗: {e}")
-        return f"週 AI 覆盤執行失敗：{e}"
+        safe_err = redact_secrets(str(e))
+        logger.error(f"週 AI 覆盤呼叫失敗: {safe_err}")
+        return f"週 AI 覆盤執行失敗：{safe_err}"
