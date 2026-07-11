@@ -8,6 +8,37 @@
 
 ## 📍 最新狀態（新的寫最上面）
 
+### 2026-07-11 — Upstash 額度事故追查：RedBeat 與 result backend 兩個次要項複查
+
+**任務目標**：老闆要求把先前回報的兩個次要貢獻源（RedBeat 續租、未使用的
+result backend）也查清楚，不要停在估計，要有實測/原始碼依據。
+
+**RedBeat（已修復，commit `fdee7fd`）**：讀 `redbeat.schedulers.RedBeatScheduler`
+原始碼確認每次 tick 固定花 3 個 Redis 命令——`lock.extend()`（Lua EVALSHA，
+1 命令）+ `schedule` 屬性內部的 2 個 `ZRANGEBYSCORE`（pipeline）。tick 間隔
+上限為 Celery `Scheduler.max_interval`（預設 300 秒，`beat_max_loop_interval`
+未設定時的 fallback）。閒置時 = 288 tick/天 × 3 命令 ≈ **2.6 萬次/月**
+（約占修復後剩餘用量的一成，非主因但確實存在）。
+
+修復：`celery_app.conf.beat_max_loop_interval = 900`（300→900 秒）。**確認
+安全、零下游影響**：本系統全部 9 個排程都是靜態 crontab（無執行期動態
+新增/變動的任務），`RedBeatScheduler.tick()` 每次都用 `crontab.is_due()`
+算出精確剩餘秒數才回傳實際 sleep 長度，到期前一定會被 900 秒寬的 peek
+視窗捕捉到並精準喚醒——跟 BRPOP 修復同一個道理：拉大輪詢上限只降低「閒置
+多久 check-in 一次」，不影響任務觸發精確度。`lock_timeout` 隨之等比例拉到
+4500 秒，仍遠大於新 tick 間隔，鎖不會提前過期。預期再省約 1.7 萬次/月
+（2.6萬→約 8,600/月）。新增 2 個測試，全套 205 passed（203→205）。
+
+**Result backend（已查證，維持現狀不動）**：`grep AsyncResult` 全 codebase
+零結果，確認沒有任何地方讀取任務結果。用 `task_track_started=True` +
+result backend 寫入頻率估算：約 10 次任務/天 × 2-4 個狀態寫入命令 ≈
+**900 次/月**——占（BRPOP+RedBeat 修復後）剩餘預算約 0.3%，移除的效益極小
+且會改變 Celery 行為（`task_track_started` 需要 backend 才有意義），
+評估後**不值得為這麼小的量冒行為變動風險**，維持現狀。
+
+**下一步**：連同前一輪的 BRPOP 修復，觀察下個月 Upstash 用量報表驗證總量
+落在預期範圍（約 27 萬次/月，額度內尚有近一倍餘裕）。
+
 ### 2026-07-11 — 生產事故：Upstash Redis 免費額度耗盡修復
 
 **觸發**：老闆轉來 Upstash 通知——ZeroHour 資料庫已達免費方案 500,000 命令/月
