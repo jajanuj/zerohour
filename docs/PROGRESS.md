@@ -33,13 +33,13 @@ fundamental_agent、layer3 日/週 AI 覆盤）都把金鑰放在 URL query stri
    （`PYTHONTRACEMALLOC=25` 追出 ResourceWarning 堆疊確認）。已 mock 掉
    `get_agent_runs` 修復（`86937c0`），全套 201 passed（193→201，新增 8 個）
 
-**⚠️ 老闆需要做的事**：這組 Gemini API 金鑰已外洩到 Discord 頻道，視同已
-洩漏，建議至 aistudio.google.com 撤銷舊金鑰、產生新金鑰，再執行
-`fly secrets set GEMINI_API_KEY=<新金鑰>`（金鑰輪替屬紅線，只能老闆執行）。
+**金鑰輪替**：老闆已確認該 Discord 頻道僅自己可見，風險低，**決定不換金鑰**
+（2026-07-11 對話中明示）。代碼修復（header 傳遞 + redact_secrets）已上線，
+不論金鑰換不換，往後同類錯誤都不會再外洩任何密鑰到 Discord。此項視為結案，
+非待辦。
 
-**下一步**：確認新金鑰設定後，觀察下次 Gemini 呼叫（04:10 市場背景/13:40
-日覆盤/週五 14:00 週覆盤）是否正常，且即使再次逾時/出錯，Discord 訊息中
-不會再出現任何金鑰片段。
+**下一步**：觀察下次 Gemini 呼叫（04:10 市場背景/13:40 日覆盤/週五 14:00
+週覆盤）即使再次逾時/出錯，Discord 訊息中不會再出現任何金鑰片段。
 
 ### 2026-07-07 — 生產事故：Supabase 連線池耗盡修復（EMAXCONNSESSION）
 
