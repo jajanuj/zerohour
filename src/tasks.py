@@ -45,6 +45,18 @@ celery_app.conf.update(
     # 立即喚醒（不受此值影響），此設定只降低「真的閒置時」重新發問的頻率，
     # 不影響任務被撿起的即時性。
     broker_transport_options={"polling_interval": 10},
+    # 同一次 Upstash 額度事故的次要貢獻源（次要，約占修復後剩餘用量的一成）：
+    # RedBeat 排程器每次 tick 固定花 3 個命令（lock.extend 1 次 + schedule
+    # 屬性內部的 ZRANGEBYSCORE ×2），tick 間隔預設不超過 300 秒（Celery
+    # Scheduler.max_interval），閒置時 = 288 次/天 × 3 命令 ≈ 2.6 萬次/月。
+    # 所有排程都是靜態 crontab（無執行期動態新增/變動的任務），提高上限只影響
+    # 「閒置多久才 check-in 一次」，不影響任務觸發精確度——RedBeatScheduler.tick()
+    # 每次都用 crontab.is_due() 算出精確剩餘秒數才回傳實際 sleep 長度，
+    # 到期前一定會被 900 秒寬的 peek 視窗捕捉到並精準喚醒（見原始碼
+    # redbeat.schedulers.RedBeatScheduler.tick/schedule）。拉到 900 秒
+    # （lock_timeout 隨之等比例拉到 4500 秒，仍遠大於 tick 間隔，鎖不會提前過期）
+    # 把這塊命令量再砍到約 1/3（≈8,600 次/月）。
+    beat_max_loop_interval=900,
 )
 
 if settings.redis_url.startswith("rediss://"):
