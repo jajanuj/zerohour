@@ -8,6 +8,54 @@
 
 ## 📍 最新狀態（新的寫最上面）
 
+### 2026-07-11 — 全面複查其他免費額度風險（老闆要求「還有其他會超出的嗎」）
+
+**任務目標**：Upstash 事故處理完後，老闆要求檢查系統依賴的所有外部服務是否
+還有其他免費額度風險。逐一查證，非憑印象。
+
+**發現並修復：第 6 個 Gemini 金鑰外洩點（`supply_chain_agent.py`）**——
+2026-07-07 修 Gemini 金鑰外洩時只抓到 5 個呼叫點，這次複查 Gemini 用量時
+用 `grep generativelanguage.googleapis.com` 全 codebase 才發現漏了
+`src/agents/stock_selection/supply_chain_agent.py`，同樣把金鑰放在
+`?key=` URL query string 且完全沒接上用量追蹤。已比照另 5 處改用
+`x-goog-api-key` header + `redact_secrets()` + `record_gemini_call()`。
+**此路徑目前是休眠態**：`DEFAULT_UNIVERSE`（15 檔）與 `_KNOWN_SCORES` 靜態表
+（同樣 15 檔）完全重疊，目前選股清單不會觸發真正的 Gemini 呼叫，但清單一旦
+加入新股票就會觸發，漏洞是真實存在、非假警報。
+
+**發現並修正：Gemini 用量儀表板的每日上限數字錯誤**——`GeminiUsageResponse
+.rpd_limit` 先前寫死 20，這次上網查證 Google 官方文件
+（ai.google.dev/gemini-api/docs/rate-limits）與多方資料，gemini-2.5-flash
+免費方案 RPD 實際落在 **250~1,500**（依專案/帳號等級而異，Google 不公布
+單一保證值），20 這個數字錯得離譜（低了 12 倍以上）。已更正為 250（保守
+下限）。**順帶用實際排程算出真實用量**：平日約 2 次/天（market_context +
+daily_review），週五 +1（週報），週日選股尖峰約 32 次（15 檔 ×
+fundamental+catalyst 各 1 次），全部落在真正額度的 13% 以內——**Gemini
+從來就不是額度風險，是儀表板數字本身誤導**。
+
+**查證後判定無近期風險（未改代碼）**：
+- **GitHub Actions**：`gh repo view` 確認 repo 為 **public**，GitHub 對公開
+  repo 的 Actions 分鐘數無上限（免費額度 2,000 分鐘/月只限私有 repo），
+  push 再頻繁也不會超額
+- **Fly.io**：2026 年已無新戶免費方案，全面 Pay-As-You-Go（或沿用舊帳號的
+  legacy 方案）——風險性質跟 Upstash/Gemini 不同，是「持續計費」而非「額度
+  歸零就斷」，且無帳務存取權限無法查具體方案，非本次可處理範圍
+- **Supabase**：免費方案 500MB 資料庫 + ~2-5GB 頻寬/月。依現有 schema 逐表
+  估算成長率（`review_reports.ai_analysis`、`watchlist.agent_results` 等
+  JSON/Text 欄位最大宗），推算年成長量級落在個位數 MB，距 500MB 上限還有
+  數十年餘裕；「閒置 7 天自動暫停」的風險已由既有
+  `supabase-keepalive.yml`（每 3 天 ping 一次）處理。無資料列清除機制
+  （`daily_backup` 任務只是 log 打卡，不刪資料），但以目前成長速度非近期
+  風險，記錄供未來參考
+
+**驗證**：新增 1 個測試涵蓋 supply_chain_agent 的金鑰防護，全套 206 passed
+（205→206）。
+
+**下一步**：無立即待辦。若未來選股股票池擴大到超出 `_KNOWN_SCORES` 靜態表
+範圍，supply_chain_agent 的 Gemini 呼叫會被真正觸發，屆時額度使用量會略增
+但仍在真實 RPD 額度內。
+
+### 2026-07-11 — Upstash 額度事故追查：RedBeat 與 result backend 兩個次要項複查
 ### 2026-07-11 — Upstash 額度事故追查：RedBeat 與 result backend 兩個次要項複查
 
 **任務目標**：老闆要求把先前回報的兩個次要貢獻源（RedBeat 續租、未使用的
