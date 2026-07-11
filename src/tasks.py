@@ -38,6 +38,13 @@ celery_app.conf.update(
     enable_utc=True,
     task_track_started=True,
     task_default_queue="celery",
+    # Upstash 免費額度 500,000 命令/月耗盡（2026-07-11 生產事故）：Kombu redis
+    # transport 預設 brpop_timeout=1（秒），worker 閒置時每秒發一次 BRPOP，
+    # 24 小時 × 60 × 60 = 86,400 次/天 ≈ 259 萬次/月，遠超額度且與此系統
+    # 每天僅數次排程任務的實際流量不成比例。BRPOP 是阻塞式指令，訊息一到就
+    # 立即喚醒（不受此值影響），此設定只降低「真的閒置時」重新發問的頻率，
+    # 不影響任務被撿起的即時性。
+    broker_transport_options={"polling_interval": 10},
 )
 
 if settings.redis_url.startswith("rediss://"):
