@@ -8,6 +8,39 @@
 
 ## 📍 最新狀態（新的寫最上面）
 
+### 2026-07-11 — 生產事故：Gemini API 金鑰外洩到 Discord 修復
+
+**觸發**：老闆轉來 Discord 週覆盤截圖——「AI 週報」欄顯示 Gemini 呼叫失敗訊息
+`Server error '503 Service Unavailable' for url '...generateContent?key=<真實金鑰>'`，
+完整金鑰直接暴露在頻道訊息中。
+
+**根因**：5 個 Gemini 呼叫點（market_context_agent、catalyst_agent、
+fundamental_agent、layer3 日/週 AI 覆盤）都把金鑰放在 URL query string
+（`?key=...`）。Gemini 服務端 503 時，httpx 拋出的例外字串內含完整請求 URL；
+`layer3_ai_analysis.py` 的 `except Exception as e: return f"...{e}"` 把這段
+含金鑰的例外文字直接回傳，一路流進 Discord 週報訊息。
+
+**修復**（commit `3ed39fb`、`86937c0`）：
+1. 全部 5 個呼叫點改用 `x-goog-api-key` header 傳金鑰，金鑰不再出現在 URL
+2. 新增 `redact_secrets()`（`src/agents/gemini_usage.py`）作第二道防線：
+   log、DB（`agent_run_logs.error_message`，即上次 Gemini 用量查看功能存的
+   欄位）、回傳給呼叫方的文字，一律先過濾金鑰
+3. 新增 8 個測試（`tests/unit/test_gemini_usage.py`），用
+   `httpx.MockTransport` 重現 503 情境驗證金鑰不進 URL、不外洩
+4. **診斷過程中順帶發現另一個問題**：`test_api_key_guard.py` 有兩個測試會讓
+   請求真的打到查 DB 的 handler；本機 `.env` 目前指向生產 Supabase（同
+   07-07 EMAXCONNSESSION 事故那顆），這兩個測試因此會真的連線且連線沒關乾淨
+   （`PYTHONTRACEMALLOC=25` 追出 ResourceWarning 堆疊確認）。已 mock 掉
+   `get_agent_runs` 修復（`86937c0`），全套 201 passed（193→201，新增 8 個）
+
+**⚠️ 老闆需要做的事**：這組 Gemini API 金鑰已外洩到 Discord 頻道，視同已
+洩漏，建議至 aistudio.google.com 撤銷舊金鑰、產生新金鑰，再執行
+`fly secrets set GEMINI_API_KEY=<新金鑰>`（金鑰輪替屬紅線，只能老闆執行）。
+
+**下一步**：確認新金鑰設定後，觀察下次 Gemini 呼叫（04:10 市場背景/13:40
+日覆盤/週五 14:00 週覆盤）是否正常，且即使再次逾時/出錯，Discord 訊息中
+不會再出現任何金鑰片段。
+
 ### 2026-07-07 — 生產事故：Supabase 連線池耗盡修復（EMAXCONNSESSION）
 
 **觸發**：老闆轉來 Discord 系統錯誤截圖——`run_daily_review` 於 2026-07-06 下午
