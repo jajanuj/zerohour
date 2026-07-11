@@ -18,7 +18,19 @@ class TestApiKeyGuard:
     def teardown_method(self):
         main_module.settings.api_key = self._orig
 
-    def test_disabled_when_key_not_configured(self):
+    def _mock_agent_runs(self, monkeypatch):
+        # 這兩個測試會讓請求真的打到 handler；/agents/gemini-usage 會查 DB，
+        # 若不 mock，本機 .env 若指向生產 Supabase 會真的連線（2026-07-07
+        # EMAXCONNSESSION 事故後，測試絕不可依賴環境變數指向何處才算安全）
+        async def fake_get_agent_runs(days=7, limit=100):
+            return []
+
+        monkeypatch.setattr(
+            "src.database.helpers.get_agent_runs", fake_get_agent_runs
+        )
+
+    def test_disabled_when_key_not_configured(self, monkeypatch):
+        self._mock_agent_runs(monkeypatch)
         main_module.settings.api_key = ""
         r = self.client.get("/api/v1/agents/gemini-usage")
         assert r.status_code != 401
@@ -35,7 +47,8 @@ class TestApiKeyGuard:
         )
         assert r.status_code == 401
 
-    def test_correct_key_passes(self):
+    def test_correct_key_passes(self, monkeypatch):
+        self._mock_agent_runs(monkeypatch)
         main_module.settings.api_key = "secret123"
         r = self.client.get(
             "/api/v1/agents/gemini-usage", headers={"X-API-Key": "secret123"}
