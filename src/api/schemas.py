@@ -136,7 +136,11 @@ class GeminiRunItem(BaseModel):
 
 class GeminiUsageResponse(BaseModel):
     today_calls: int = 0
-    rpd_limit: int = 20  # gemini-2.5-flash 免費方案每日呼叫上限
+    # gemini-2.5-flash 免費方案 RPD（次/日）保守下限，非官方保證值——Google 官方
+    # 文件（ai.google.dev/gemini-api/docs/rate-limits）不公布單一固定數字，
+    # 依專案/帳號等級可能落在 250~1500，需精確數字請查 AI Studio 主控台。
+    # 2026-07-11 複查前誤用 20（比實際下限低 12 倍以上），已更正。
+    rpd_limit: int = 250
     today_tokens: int = 0
     runs: list[GeminiRunItem] = []
 

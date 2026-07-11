@@ -1688,7 +1688,7 @@ async function loadGeminiUsage() {
     const r = await fetch(API + '/api/v1/agents/gemini-usage?days=7');
     if (!r.ok) throw new Error(`HTTP ${r.status}`);
     const d = await r.json();
-    const limit = d.rpd_limit || 20;
+    const limit = d.rpd_limit || 250;
     const pct = d.today_calls / limit;
     badge.textContent = `今日 ${d.today_calls}/${limit}`;
     badge.className = 'badge ' + (pct >= 0.8 ? 'badge-sell' : pct >= 0.5 ? 'badge-hold' : 'badge-ok');

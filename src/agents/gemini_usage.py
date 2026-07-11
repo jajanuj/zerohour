@@ -1,7 +1,8 @@
 """Gemini API 呼叫記錄 — 寫入 agent_run_logs 表（老闆 2026-07-06 核准）。
 
 背景：agent_run_logs 表與 log_agent_run() 早已存在但從未被接上，
-Gemini 用量（免費方案 RPD 上限 20）一直無從查核。本模組提供單一記錄入口，
+Gemini 用量（免費方案 RPD 保守下限約 250，見 api/schemas.py 註解）一直無從
+查核。本模組提供單一記錄入口，
 各 Gemini 呼叫點在成功/失敗時各記一次；記錄失敗只 log 不拋，不影響主流程。
 """
 import logging

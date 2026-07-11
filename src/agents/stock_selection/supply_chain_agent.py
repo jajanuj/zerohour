@@ -2,7 +2,10 @@
 import httpx
 import json
 import logging
+import time
 from dataclasses import dataclass
+
+from ..gemini_usage import record_gemini_call, redact_secrets
 
 logger = logging.getLogger(__name__)
 
@@ -123,11 +126,16 @@ JSON 格式：
 }}
 """
 
+    _t0 = time.monotonic()
+    _logged = False
     try:
         async with httpx.AsyncClient(timeout=25.0) as client:
             resp = await client.post(
-                f"https://generativelanguage.googleapis.com/v1/models/gemini-2.5-flash:generateContent?key={settings.gemini_api_key}",
-                headers={"Content-Type": "application/json"},
+                "https://generativelanguage.googleapis.com/v1/models/gemini-2.5-flash:generateContent",
+                headers={
+                    "Content-Type": "application/json",
+                    "x-goog-api-key": settings.gemini_api_key,
+                },
                 json={
                     "contents": [{"parts": [{"text": prompt}]}],
                     "generationConfig": {"maxOutputTokens": 400},
@@ -135,6 +143,8 @@ JSON 格式：
             )
             resp.raise_for_status()
             data = resp.json()
+            await record_gemini_call("supply_chain_agent", symbol, _t0, data=data)
+            _logged = True
             raw = data["candidates"][0]["content"]["parts"][0]["text"].strip()
             raw = raw.replace("```json", "").replace("```", "").strip()
             r = json.loads(raw)
@@ -147,5 +157,7 @@ JSON 格式：
                 risks=r.get("risks", []),
             )
     except Exception as e:
-        logger.error(f"supply_chain_agent {symbol} error: {e}")
+        if not _logged:
+            await record_gemini_call("supply_chain_agent", symbol, _t0, error=e)
+        logger.error(f"supply_chain_agent {symbol} error: {redact_secrets(str(e))}")
         return _default

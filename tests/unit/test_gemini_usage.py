@@ -5,7 +5,9 @@
 httpx 例外字串含請求 URL，此字串又被直接回傳並顯示在 Discord。
 
 修法：
-1. 全部 5 個 Gemini 呼叫點改用 `x-goog-api-key` header 傳金鑰，金鑰不再進 URL。
+1. 全部 6 個 Gemini 呼叫點改用 `x-goog-api-key` header 傳金鑰，金鑰不再進 URL
+   （第一輪修復只抓到 5 個，2026-07-11 複查額度風險時才發現
+   `supply_chain_agent.py` 也有同樣的漏洞，一併補上）。
 2. `redact_secrets()` 作第二道防線，在 log／DB／使用者可見文字出現前過濾金鑰。
 """
 import time
@@ -127,3 +129,42 @@ class TestLayer3NoKeyLeak:
         assert "key=" not in captured["url"]
         assert captured["header"] == "FAKESECRETKEY123"
         assert "FAKESECRETKEY123" not in result
+
+
+class TestSupplyChainAgentNoKeyLeak:
+    """supply_chain_agent.py 是第一輪修復漏抓的第 6 個呼叫點，補測試。
+    只有未在 _KNOWN_SCORES 靜態表中的 symbol 才會真的呼叫 Gemini。"""
+
+    async def test_unknown_symbol_key_not_in_url(self, monkeypatch):
+        from src.agents.stock_selection import supply_chain_agent as sca
+
+        # get_settings() 是 @lru_cache 單例，不論在哪裡呼叫都拿到同一個物件，
+        # 直接改這個物件的屬性即可，supply_chain_agent 內部是函式內 local import
+        monkeypatch.setattr(get_settings(), "gemini_api_key", "FAKESECRETKEY123")
+
+        async def fake_log_agent_run(**kwargs):
+            pass
+
+        import src.database.helpers as helpers_module
+        monkeypatch.setattr(helpers_module, "log_agent_run", fake_log_agent_run)
+
+        captured = {}
+
+        def handler(request: httpx.Request) -> httpx.Response:
+            captured["url"] = str(request.url)
+            captured["header"] = request.headers.get("x-goog-api-key")
+            return httpx.Response(503, request=request, text="Service Unavailable")
+
+        orig_async_client = httpx.AsyncClient
+
+        def fake_async_client(*args, **kwargs):
+            kwargs["transport"] = httpx.MockTransport(handler)
+            return orig_async_client(*args, **kwargs)
+
+        monkeypatch.setattr(httpx, "AsyncClient", fake_async_client)
+
+        result = await sca.analyze_supply_chain("9999.TW")  # 不在靜態表中
+
+        assert "key=" not in captured["url"]
+        assert captured["header"] == "FAKESECRETKEY123"
+        assert "FAKESECRETKEY123" not in result.supply_chain_summary

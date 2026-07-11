@@ -332,7 +332,7 @@ async def get_black_swan_status():
 
 @router.get("/agents/gemini-usage", response_model=GeminiUsageResponse)
 async def get_gemini_usage(days: int = 7):
-    """Gemini API 呼叫記錄與當日用量（免費方案 RPD 上限 20）。"""
+    """Gemini API 呼叫記錄與當日用量（免費方案 RPD 保守下限約 250，見 GeminiUsageResponse.rpd_limit 註解）。"""
     from datetime import datetime as _dt, timedelta as _td
     from ..database.helpers import get_agent_runs
     try:
