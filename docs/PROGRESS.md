@@ -18,7 +18,7 @@ push 不再自動部署。`test.yml` 照常運作。
 **後續（同日）**：`fly.toml` 頂部加停用註記（保留作架構參考）；CLAUDE.md
 （老闆明示同意）更新為下線狀態：移除 push 後煙霧測試步驟、改寫環境速查、
 新增「重新部署需老闆同意」紅線。本文件下方歷史條目的 Fly.io 描述保留原樣。
-GitHub repo secret `FLY_API_TOKEN` 待老闆刪除。Supabase/Upstash 未動（免費方案）。
+GitHub repo secret `FLY_API_TOKEN` 已由老闆刪除（`SUPABASE_*` 兩個保留，keepalive 需要）。Supabase/Upstash 未動（免費方案）。
 若要重新上線需另選平台（如 Oracle Always Free）。
 
 ### 2026-07-11 — 全面複查其他免費額度風險（老闆要求「還有其他會超出的嗎」）
