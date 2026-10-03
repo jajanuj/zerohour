@@ -1,7 +1,8 @@
 # CLAUDE.md — ZeroHour 專案路由中心
 
 > 本檔只放核心規則與檔案路由。細則在 `docs/harness/`，**按需跳轉，不要一次全讀**。
-> ZeroHour 是部署在 Fly.io 的**真金交易系統**（FastAPI + Supabase + Upstash Redis + Celery）。
+> ZeroHour 是**真金交易系統**（FastAPI + Supabase + Upstash Redis + Celery）。
+> **2026-10-03 起已下線**：Fly.io app 已刪除（持續計費），目前無生產環境、push 不會部署。
 > 你寫的每一行代碼都可能影響真實金錢，不確定就停下來問。
 
 ## 溝通規則
@@ -33,12 +34,7 @@
    ```
 4. **完成判定**：對照 `docs/harness/D-judgment-rubric.md` §2 的量化清單
 5. **Commit**：`git add <明確檔名>`（**禁止 `git add -A` 和 `git add .`**）→ commit → push
-6. **Push 後煙霧測試**（等 ~3 分鐘部署；用 Bash 工具執行，PowerShell 跑 `/dev/null` 會失敗）：
-   ```
-   curl -s -o /dev/null -w "%{http_code}" https://zerohour-trading-engine.fly.dev/api/v1/positions
-   ```
-   非 200 → 停止宣告完成，立即回報
-7. **更新 `docs/PROGRESS.md`**：新條目寫在「最新狀態」區頂部，格式見該檔開頭說明
+6. **更新 `docs/PROGRESS.md`**：新條目寫在「最新狀態」區頂部，格式見該檔開頭說明
 
 ## Commit 格式
 
@@ -49,10 +45,11 @@
 | 紅線 | 原因 |
 |------|------|
 | `git add -A` / `git add .` / `git add -f` | 曾有活密鑰檔在 untracked 邊緣（A 診斷書痛點二）|
-| 未跑 pytest 就 push | push master = 直接部署生產（A 診斷書痛點三）|
+| 未跑 pytest 就 push | master 是唯一可信版本；重新上線時 push 將再度等於部署（A 診斷書痛點三）|
 | 動 `src/risk/`、`src/signals/` 的公式或參數而未先問老闆 | 直接影響真實金錢 |
 | 資料庫 schema 異動、API 介面變更、新增依賴 | 需老闆明示同意 |
-| `fly secrets set`、動 `.env*` 檔內容 | 生產憑證，只有老闆能動 |
+| 動 `.env*` 檔內容或任何部署平台的 secrets | 生產憑證，只有老闆能動 |
+| 重新部署到任何雲端平台（含恢復 `deploy.yml` 的 push 觸發）| 會產生費用，需老闆明示同意 |
 | 同一問題連續失敗 2 次還繼續原地重試 | 走 D 檔 §1 換路徑判準或 C 檔升級路徑（此為主對話門檻；Subagent 的升降級門檻更嚴，見 C 檔 §4）|
 
 ## 檔案路由（需要時才讀）
@@ -74,8 +71,8 @@
 
 ## 環境速查
 
-- 生產：https://zerohour-trading-engine.fly.dev （web 256MB / worker 512MB，記憶體是硬天花板）
-- 部署：push 到 **main 或 master 任一分支** → GitHub Actions 自動部署（**目前無測試閘門**，所以 push 前驗證是唯一防線）
+- 生產：**無**（2026-10-03 起下線；原 Fly.io 東京 web 256MB×2 / worker 512MB，app 已刪除）
+- 部署：`deploy.yml` 已改為僅手動觸發（`workflow_dispatch`），且 Fly.io app 不存在，**不要手動觸發**；push 只會跑 `test.yml`。重新上線需另選平台並經老闆同意
 - 本地跑 API：`uvicorn src.main:app --port 8080`
 - E2E：`python -m pytest tests/e2e -x -q`（Playwright dashboard 測試在 `tests/e2e/test_dashboard_playwright.py`）
 - DB：生產 Supabase PostgreSQL；本地 SQLite `zerohour_dev.db`（已 gitignore）

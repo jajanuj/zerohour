@@ -15,8 +15,10 @@
 **已完成**：老闆已在後台刪除 `zerohour-trading-engine` app（機器、secrets
 一併清除）並移除付款方式；`deploy.yml` 改為僅 `workflow_dispatch` 手動觸發，
 push 不再自動部署。`test.yml` 照常運作。
-**注意**：`fly.toml`、本文件與 CLAUDE.md 中的 Fly.io/線上網址描述已過時；
-GitHub repo secret `FLY_API_TOKEN` 可刪除。Supabase/Upstash 未動（免費方案）。
+**後續（同日）**：`fly.toml` 頂部加停用註記（保留作架構參考）；CLAUDE.md
+（老闆明示同意）更新為下線狀態：移除 push 後煙霧測試步驟、改寫環境速查、
+新增「重新部署需老闆同意」紅線。本文件下方歷史條目的 Fly.io 描述保留原樣。
+GitHub repo secret `FLY_API_TOKEN` 待老闆刪除。Supabase/Upstash 未動（免費方案）。
 若要重新上線需另選平台（如 Oracle Always Free）。
 
 ### 2026-07-11 — 全面複查其他免費額度風險（老闆要求「還有其他會超出的嗎」）

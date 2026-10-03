@@ -1,3 +1,6 @@
+# ⚠️ 已停用（2026-10-03）：Fly.io app `zerohour-trading-engine` 已刪除，
+# 本檔僅保留作為部署架構參考（web/worker 行程與記憶體配置）。
+# 勿執行 `fly deploy` / `fly launch`——會重新建立 app 並開始計費。
 app = "zerohour-trading-engine"
 primary_region = "nrt"
 
