@@ -8,6 +8,17 @@
 
 ## 📍 最新狀態（新的寫最上面）
 
+### 2026-10-03 — 停用 Fly.io 部署（專案停止上線運行）
+
+**原因**：Fly.io 已無免費方案，3 台機器（web×2 @256MB + worker @512MB）
+常駐約 $5/月（2026-09 帳單 $5.08）。老闆決定不再使用 Fly.io。
+**已完成**：老闆已在後台刪除 `zerohour-trading-engine` app（機器、secrets
+一併清除）並移除付款方式；`deploy.yml` 改為僅 `workflow_dispatch` 手動觸發，
+push 不再自動部署。`test.yml` 照常運作。
+**注意**：`fly.toml`、本文件與 CLAUDE.md 中的 Fly.io/線上網址描述已過時；
+GitHub repo secret `FLY_API_TOKEN` 可刪除。Supabase/Upstash 未動（免費方案）。
+若要重新上線需另選平台（如 Oracle Always Free）。
+
 ### 2026-07-11 — 全面複查其他免費額度風險（老闆要求「還有其他會超出的嗎」）
 
 **任務目標**：Upstash 事故處理完後，老闆要求檢查系統依賴的所有外部服務是否

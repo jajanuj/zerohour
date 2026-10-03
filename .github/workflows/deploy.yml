@@ -1,8 +1,10 @@
 name: Deploy to Fly.io
 
+# 2026-10-03 停用：Fly.io 已無免費方案（持續計費），老闆已刪除
+# zerohour-trading-engine app 並停止使用 Fly.io。移除 push 觸發，避免每次
+# push 都部署到不存在的 app 而失敗。單元測試仍由 test.yml 負責。
 on:
-  push:
-    branches: [main, master]
+  workflow_dispatch:
 
 env:
   FLY_API_TOKEN: ${{ secrets.FLY_API_TOKEN }}
