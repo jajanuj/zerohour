@@ -8,6 +8,25 @@
 
 ## 📍 最新狀態（新的寫最上面）
 
+### ⏸️ 2026-10-04 — 專案暫停（老闆決定）
+
+**ZeroHour 已暫停開發與運行，repo 即將封存（archive）。** 無任何線上環境。
+
+**暫停時的狀態**：
+- Fly.io app 已刪除、付款方式已移除（見下方 10-03 條目）
+- CI `Test & Lint` 自 2026-10-03 起失敗（**未修**）：SQLAlchemy 2.1 不再
+  預設附帶 `greenlet`，`tests/unit/test_sync_run.py` 收集階段 ImportError。
+  已在本機驗證：把 `pyproject.toml` 的 `sqlalchemy>=2.0.0` 改成
+  `sqlalchemy[asyncio]>=2.0.0` 後 206 passed（屬新增依賴，需老闆同意）
+- `Supabase Keep-Alive` 自 2026-07-25 起失敗（curl exit 6，DNS 解析不到），
+  2026-09-10 後被 GitHub 以 60 天無活動自動停用——Supabase 專案可能已暫停
+- 老闆自行處理（後台操作）：封存 GitHub repo、Supabase / Upstash 暫停或刪除、
+  撤銷 Gemini / Telegram / Fugle / Alpha Vantage 等金鑰
+
+**若要重啟**：①GitHub 取消封存 ②修上面的 greenlet 依賴讓 CI 轉綠
+③確認 Supabase / Upstash 還在，金鑰若已撤銷需重新申請並更新 `.env`
+④另選部署平台（Fly.io 已無免費方案），恢復部署需老闆同意（CLAUDE.md 紅線）
+
 ### 2026-10-03 — 停用 Fly.io 部署（專案停止上線運行）
 
 **原因**：Fly.io 已無免費方案，3 台機器（web×2 @256MB + worker @512MB）
